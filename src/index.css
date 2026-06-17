@@ -1,6 +1,6 @@
 /* 
   Khok Si Witthayasan School - Teaching Supervision System CSS Design System
-  Theme: Emerald Green & Gold Yellow (เขียว-เหลือง)
+  Theme: Tidewater Green (#2F4F4F), Fortuna Gold (#DAA520), Set Sail Champagne (#FAEBD7)
 */
 
 /* --- Google Font Config & Resets --- */
@@ -13,16 +13,16 @@
 
 :root {
   /* Colors */
-  --primary-color: #0b6623;      /* School Green: Emerald Forest */
-  --primary-hover: #074b18;      /* Deep green */
-  --primary-light: #e8f5e9;      /* Light green background */
+  --primary-color: #2F4F4F;      /* School: Tidewater Green */
+  --primary-hover: #1e3333;      /* Dark Tidewater Green */
+  --primary-light: #e6ecec;      /* Soft light green tint */
   
-  --secondary-color: #f5b041;    /* School Yellow: Amber Gold */
-  --secondary-hover: #f39c12;    /* Darker Gold */
-  --secondary-light: #fef9e7;    /* Light gold background */
+  --secondary-color: #DAA520;    /* School: Fortuna Gold */
+  --secondary-hover: #b8860b;    /* Darker Gold */
+  --secondary-light: #FAEBD7;    /* Set Sail Champagne */
 
   /* Neutral palette */
-  --bg-color: #f4f6f8;
+  --bg-color: #fcfaf6;           /* Premium warm cream background */
   --card-bg: #ffffff;
   --text-dark: #1f2937;
   --text-medium: #4b5563;
@@ -32,9 +32,9 @@
   /* Status Colors */
   --status-pending: #9ca3af;       /* Gray */
   --status-pending-light: #f3f4f6;
-  --status-volunteered: #f39c12;   /* Yellow/Orange */
-  --status-volunteered-light: #fff7ed;
-  --status-approved: #27ae60;      /* Green */
+  --status-volunteered: #DAA520;   /* Fortuna Gold */
+  --status-volunteered-light: #fdfaf4;
+  --status-approved: #2e7d32;      /* Green */
   --status-approved-light: #f0fdf4;
   --status-completed: #2980b9;     /* Blue */
   --status-completed-light: #f0f9ff;
@@ -344,7 +344,7 @@ textarea:focus {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: radial-gradient(circle at 10% 20%, rgba(11, 102, 35, 0.05) 0%, rgba(245, 176, 65, 0.05) 90%), var(--bg-color);
+  background: radial-gradient(circle at 10% 20%, rgba(47, 79, 79, 0.06) 0%, rgba(218, 165, 32, 0.06) 90%), var(--bg-color);
   padding: 1.5rem;
 }
 
@@ -375,20 +375,21 @@ textarea:focus {
   margin-bottom: 2rem;
 }
 
-.login-logo {
-  width: 70px;
-  height: 70px;
-  background-color: var(--primary-color);
-  color: var(--secondary-color);
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 2rem;
-  font-weight: 800;
-  margin: 0 auto 1rem;
-  box-shadow: var(--shadow-md);
-  border: 3px solid var(--secondary-light);
+.login-logo-img {
+  width: 110px;
+  height: auto;
+  max-height: 140px;
+  object-fit: contain;
+  margin: 0 auto 1.25rem;
+  display: block;
+  filter: drop-shadow(0px 4px 8px rgba(0, 0, 0, 0.12));
+}
+
+.school-logo-img {
+  width: 45px;
+  height: 45px;
+  object-fit: contain;
+  border-radius: 4px;
 }
 
 .login-header h2 {

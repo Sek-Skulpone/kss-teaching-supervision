@@ -16,17 +16,26 @@ import {
 import Calendar from './components/Calendar';
 import TeacherDashboard from './components/TeacherDashboard';
 import AdminDashboard from './components/AdminDashboard';
+import TermPlanArchive from './components/TermPlanArchive';
+import logo from './assets/logo.png';
 import {
-  initializeDB,
   getUsers,
+  addTeacher,
+  deleteTeacher,
   getSupervisions,
   addSupervision,
+  updateSupervision,
+  deleteSupervision,
   volunteerToSupervise,
   approveVolunteer,
   rejectVolunteer,
   assignSupervisor,
   removeSupervisor,
-  submitPostTeachingRecord
+  submitPostTeachingRecord,
+  getTermPlans,
+  addTermPlan,
+  updateTermPlan,
+  deleteTermPlan
 } from './db';
 
 export default function App() {
@@ -39,15 +48,13 @@ export default function App() {
   // Core App State
   const [supervisions, setSupervisions] = useState([]);
   const [teachers, setTeachers] = useState([]);
+  const [termPlans, setTermPlans] = useState([]);
   const [activeMainTab, setActiveMainTab] = useState('calendar');
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Initialize DB and load session on mount
+  // Initialize and load session on mount
   useEffect(() => {
-    initializeDB();
-    setTeachers(getUsers());
-
     const savedUser = localStorage.getItem('ks_current_user');
     if (savedUser) {
       setCurrentUser(JSON.parse(savedUser));
@@ -56,10 +63,16 @@ export default function App() {
     const loadData = async () => {
       setIsLoading(true);
       try {
-        const data = await getSupervisions();
-        setSupervisions(data);
+        const [usersData, supervisionsData, termPlansData] = await Promise.all([
+          getUsers(),
+          getSupervisions(),
+          getTermPlans()
+        ]);
+        setTeachers(usersData);
+        setSupervisions(supervisionsData);
+        setTermPlans(termPlansData);
       } catch (e) {
-        console.error("Error loading supervisions on mount:", e);
+        console.error("Error loading initial data from Google Sheets:", e);
       } finally {
         setIsLoading(false);
       }
@@ -81,27 +94,64 @@ export default function App() {
     }
   };
 
-  // Login Handler
-  const handleLogin = (e) => {
+  const refreshTeachersData = async () => {
+    setIsLoading(true);
+    try {
+      const data = await getUsers();
+      setTeachers(data);
+      return data;
+    } catch (e) {
+      console.error("Error refreshing teachers:", e);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const refreshTermPlansData = async () => {
+    setIsLoading(true);
+    try {
+      const data = await getTermPlans();
+      setTermPlans(data);
+      return data;
+    } catch (e) {
+      console.error("Error refreshing term plans:", e);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Login Handler (Fetches latest user list first)
+  const handleLogin = async (e) => {
     e.preventDefault();
     if (!username || !password) {
       setLoginError('กรุณากรอกทั้งชื่อผู้ใช้และรหัสผ่าน');
       return;
     }
 
-    const foundUser = teachers.find(
-      u => u.username === username.toLowerCase().trim() && u.password === password
-    );
+    setIsLoading(true);
+    try {
+      const latestTeachers = await getUsers();
+      setTeachers(latestTeachers);
+      
+      const foundUser = latestTeachers.find(
+        u => u.username === username.toLowerCase().trim() && u.password === password
+      );
 
-    if (foundUser) {
-      setCurrentUser(foundUser);
-      localStorage.setItem('ks_current_user', JSON.stringify(foundUser));
-      setLoginError('');
-      setUsername('');
-      setPassword('');
-      setActiveMainTab('calendar'); // Default view after login
-    } else {
-      setLoginError('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง');
+      if (foundUser) {
+        setCurrentUser(foundUser);
+        localStorage.setItem('ks_current_user', JSON.stringify(foundUser));
+        setLoginError('');
+        setUsername('');
+        setPassword('');
+        setActiveMainTab('calendar');
+      } else {
+        setLoginError('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง');
+      }
+    } catch (err) {
+      console.error("Error during login verification:", err);
+      setLoginError('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์ กรุณาลองใหม่อีกครั้ง');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -112,7 +162,46 @@ export default function App() {
     setSelectedEvent(null);
   };
 
-  // CRUD Wrapper Handlers
+  // Teacher/Personnel Management Handlers
+  const handleAddTeacher = async (teacherData) => {
+    setIsLoading(true);
+    try {
+      const success = await addTeacher(teacherData);
+      if (success) {
+        await refreshTeachersData();
+        return true;
+      }
+      return false;
+    } catch (e) {
+      console.error(e);
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleDeleteTeacher = async (teacherId) => {
+    setIsLoading(true);
+    try {
+      const success = await deleteTeacher(teacherId);
+      if (success) {
+        await refreshTeachersData();
+        // If deleted user is logged in (should not be admin itself, but just in case), logout
+        if (currentUser && currentUser.id === teacherId) {
+          handleLogout();
+        }
+        return true;
+      }
+      return false;
+    } catch (e) {
+      console.error(e);
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Supervision Booking Handlers
   const handleAddSupervision = async (data) => {
     setIsLoading(true);
     try {
@@ -120,6 +209,47 @@ export default function App() {
       await refreshSupervisionData();
     } catch (e) {
       console.error(e);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleUpdateSupervision = async (supervisionId, updatedFields) => {
+    setIsLoading(true);
+    try {
+      const success = await updateSupervision(supervisionId, updatedFields);
+      if (success) {
+        const freshData = await refreshSupervisionData();
+        if (selectedEvent && selectedEvent.id === supervisionId && freshData) {
+          const updated = freshData.find(s => s.id === supervisionId);
+          setSelectedEvent(updated);
+        }
+        return true;
+      }
+      return false;
+    } catch (e) {
+      console.error(e);
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleDeleteSupervision = async (supervisionId) => {
+    setIsLoading(true);
+    try {
+      const success = await deleteSupervision(supervisionId);
+      if (success) {
+        await refreshSupervisionData();
+        if (selectedEvent && selectedEvent.id === supervisionId) {
+          setSelectedEvent(null);
+        }
+        return true;
+      }
+      return false;
+    } catch (e) {
+      console.error(e);
+      return false;
     } finally {
       setIsLoading(false);
     }
@@ -220,6 +350,58 @@ export default function App() {
     }
   };
 
+  // Term Lesson Plans Handlers
+  const handleRegisterTermPlan = async (planData) => {
+    setIsLoading(true);
+    try {
+      const success = await addTermPlan(planData);
+      if (success) {
+        await refreshTermPlansData();
+        return true;
+      }
+      return false;
+    } catch (e) {
+      console.error(e);
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleUpdateTermPlan = async (planId, updatedFields) => {
+    setIsLoading(true);
+    try {
+      const success = await updateTermPlan(planId, updatedFields);
+      if (success) {
+        await refreshTermPlansData();
+        return true;
+      }
+      return false;
+    } catch (e) {
+      console.error(e);
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleDeleteTermPlan = async (planId) => {
+    setIsLoading(true);
+    try {
+      const success = await deleteTermPlan(planId);
+      if (success) {
+        await refreshTermPlansData();
+        return true;
+      }
+      return false;
+    } catch (e) {
+      console.error(e);
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // Format Date to Thai style (e.g. 17 มิถุนายน 2569)
   const formatThaiDateFull = (dateStr) => {
     if (!dateStr) return '';
@@ -241,11 +423,9 @@ export default function App() {
       <div className="login-wrapper">
         <div className="login-card">
           <div className="login-header">
-            <div className="login-logo">
-              <School size={36} />
-            </div>
+            <img src={logo} alt="ตราโรงเรียนโคกสีวิทยาสรรค์" className="login-logo-img" />
             <h2>ระบบสารสนเทศเพื่อการนิเทศการเรียนการสอนออนไลน์</h2>
-            <p>โรงเรียนโคกสีวิทยาสรรค์ สำนักงานเขตพื้นที่การศึกษามัธยมศึกษาขอนแก่น</p>
+            <p>โรงเรียนโคกสีวิทยาสรรค์ สำนักงานเขตพื้นที่การศึกษามัธยมศึกษาสกลนคร</p>
           </div>
 
           {loginError && (
@@ -311,7 +491,7 @@ export default function App() {
       {/* Navbar Header */}
       <header className="navbar">
         <div className="nav-brand">
-          <div className="school-logo-placeholder">ค.ส.</div>
+          <img src={logo} alt="ตราโรงเรียนโคกสีวิทยาสรรค์" className="school-logo-img" />
           <div className="school-title">
             <h1>ระบบสารสนเทศเพื่อการนิเทศการเรียนการสอนออนไลน์</h1>
             <p>โรงเรียนโคกสีวิทยาสรรค์ | Khok Si Witthayasan School</p>
@@ -351,6 +531,14 @@ export default function App() {
               <ClipboardList size={18} />
               {currentUser.role === 'admin' ? 'ระบบบริหารจัดการงานนิเทศการสอน' : 'ระบบบริการครูผู้สอน'}
             </button>
+            <button 
+              className={`btn ${activeMainTab === 'archive' ? 'btn-primary' : 'btn-outline'}`}
+              onClick={() => setActiveMainTab('archive')}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+            >
+              <BookOpen size={18} />
+              คลังแผนการสอนประจำเทอม
+            </button>
           </div>
 
           <div style={{ fontSize: '13px', color: 'var(--text-medium)', backgroundColor: 'white', padding: '0.5rem 1rem', borderRadius: '30px', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -367,6 +555,12 @@ export default function App() {
           />
         )}
 
+        {activeMainTab === 'archive' && (
+          <TermPlanArchive 
+            termPlans={termPlans} 
+          />
+        )}
+
         {activeMainTab === 'dashboard' && (
           currentUser.role === 'admin' ? (
             <AdminDashboard
@@ -376,6 +570,9 @@ export default function App() {
               onRemoveSupervisor={handleRemoveSupervisor}
               onApproveVolunteer={handleApproveVolunteer}
               onRejectVolunteer={handleRejectVolunteer}
+              onAddTeacher={handleAddTeacher}
+              onDeleteTeacher={handleDeleteTeacher}
+              onUpdateSupervision={handleUpdateSupervision}
             />
           ) : (
             <TeacherDashboard
@@ -384,6 +581,12 @@ export default function App() {
               onAddSupervision={handleAddSupervision}
               onVolunteer={handleVolunteer}
               onSubmitPostRecord={handleSubmitPostRecord}
+              onDeleteSupervision={handleDeleteSupervision}
+              onUpdateSupervision={handleUpdateSupervision}
+              termPlans={termPlans}
+              onRegisterTermPlan={handleRegisterTermPlan}
+              onUpdateTermPlan={handleUpdateTermPlan}
+              onDeleteTermPlan={handleDeleteTermPlan}
             />
           )
         )}
@@ -589,8 +792,8 @@ export default function App() {
 
       {/* Footer */}
       <footer className="school-footer">
-        <p>© 2026 ระบบสารสนเทศเพื่อการนิเทศการเรียนการสอนออนไลน์ โรงเรียนโคกสีวิทยาสรรค์ จังหวัดขอนแก่น</p>
-        <p style={{ marginTop: '0.25rem', opacity: 0.7 }}>กลุ่มงานบริหารวิชาการ โรงเรียนโคกสีวิทยาสรรค์ สำนักงานเขตพื้นที่การศึกษามัธยมศึกษาขอนแก่น</p>
+        <p>© 2026 ระบบสารสนเทศเพื่อการนิเทศการเรียนการสอนออนไลน์ โรงเรียนโคกสีวิทยาสรรค์ จังหวัดสกลนคร</p>
+        <p style={{ marginTop: '0.25rem', opacity: 0.7 }}>กลุ่มงานบริหารวิชาการ โรงเรียนโคกสีวิทยาสรรค์ สำนักงานเขตพื้นที่การศึกษามัธยมศึกษาสกลนคร</p>
       </footer>
 
       {isLoading && (
