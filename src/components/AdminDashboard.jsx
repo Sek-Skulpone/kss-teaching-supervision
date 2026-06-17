@@ -137,7 +137,6 @@ export default function AdminDashboard({
     }
   };
 
-  // Format Date to Thai style (e.g. 17 มิ.ย. 2569)
   const formatThaiDate = (dateStr) => {
     if (!dateStr) return '';
     const parts = dateStr.split('-');
@@ -149,25 +148,62 @@ export default function AdminDashboard({
     return `${day} ${monthsShort[monthIndex]} ${yearTh}`;
   };
 
+  const handleExportCSV = () => {
+    // Generate CSV contents for all supervisions
+    const headers = ['ID', 'ครูผู้รับนิเทศ', 'วิชา', 'ระดับชั้น', 'ห้องเรียน', 'วันที่นิเทศ', 'คาบเวลา', 'สถานะ', 'ผู้นิเทศ'];
+    const rows = supervisions.map(s => [
+      s.id,
+      s.teacherName,
+      s.subject,
+      s.grade,
+      s.room,
+      s.date || '',
+      s.time || '',
+      s.status === 'completed' ? 'เสร็จสิ้นแล้ว' : (s.status === 'approved' ? 'แต่งตั้งกรรมการแล้ว' : 'รอดำเนินการ'),
+      s.supervisors ? s.supervisors.map(sup => sup.name).join('; ') : ''
+    ]);
+    
+    const csvContent = "\uFEFF" + [headers.join(','), ...rows.map(e => e.map(val => `"${val.replace(/"/g, '""')}"`).join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `ตารางข้อมูลการนิเทศการสอน_${new Date().toLocaleDateString('th-TH')}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <div>
       {/* Sub-navigation Tabs */}
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
-        <button 
-          className={`btn ${activeSubTab === 'supervisions' ? 'btn-primary' : 'btn-outline'}`}
-          onClick={() => setActiveSubTab('supervisions')}
-          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem' }}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <button 
+            className={`btn ${activeSubTab === 'supervisions' ? 'btn-primary' : 'btn-outline'}`}
+            onClick={() => setActiveSubTab('supervisions')}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem' }}
+          >
+            <ClipboardList size={16} />
+            บริหารจัดการการนิเทศ
+          </button>
+          <button 
+            className={`btn ${activeSubTab === 'teachers' ? 'btn-primary' : 'btn-outline'}`}
+            onClick={() => setActiveSubTab('teachers')}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem' }}
+          >
+            <Users size={16} />
+            จัดการข้อมูลบุคลากร
+          </button>
+        </div>
+
+        <button
+          className="btn btn-secondary"
+          onClick={handleExportCSV}
+          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem', fontSize: '14px' }}
         >
-          <ClipboardList size={16} />
-          บริหารจัดการการนิเทศ
-        </button>
-        <button 
-          className={`btn ${activeSubTab === 'teachers' ? 'btn-primary' : 'btn-outline'}`}
-          onClick={() => setActiveSubTab('teachers')}
-          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem' }}
-        >
-          <Users size={16} />
-          จัดการข้อมูลบุคลากร
+          📥 ดาวน์โหลดตารางนิเทศเป็น Excel (CSV)
         </button>
       </div>
 
