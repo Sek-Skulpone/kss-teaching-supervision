@@ -3,16 +3,14 @@
 import { initializeApp } from 'firebase/app';
 import { getFirestore, doc, getDoc, setDoc } from 'firebase/firestore';
 
-// ==========================================================================
-// 💡 STEP 1: REPLACE THIS CONFIG WITH YOUR OWN FIREBASE WEBSITES CONFIG
-// ==========================================================================
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_AUTH_DOMAIN",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_STORAGE_BUCKET",
-  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-  appId: "YOUR_APP_ID"
+  apiKey: "AIzaSyCFPxEX5OvBTog0Qy00Y7Vup11p9fmURS8",
+  authDomain: "kss-teaching-supervision.firebaseapp.com",
+  projectId: "kss-teaching-supervision",
+  storageBucket: "kss-teaching-supervision.firebasestorage.app",
+  messagingSenderId: "94865568066",
+  appId: "1:94865568066:web:200ca94ef554bbed8f18db",
+  measurementId: "G-L8MVMQ610L"
 };
 
 const SEED_USERS = [
