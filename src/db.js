@@ -405,3 +405,62 @@ export const deleteTermPlan = async (planId) => {
   const success = await saveCollection('term_plans', dbData.termPlans);
   return success;
 };
+
+/* ==========================================================================
+   4. SYSTEM SETTINGS (POSITIONS & DEPARTMENTS)
+   ========================================================================== */
+
+const defaultSettings = {
+  positions: ['ครูผู้ช่วย', 'ครู', 'ครูชำนาญการ', 'ครูชำนาญการพิเศษ', 'ครูเชี่ยวชาญ', 'หัวหน้างานวิชาการ', 'ผู้อำนวยการโรงเรียน', 'รองผู้อำนวยการโรงเรียน'],
+  departments: [
+    'กลุ่มสาระการเรียนรู้ภาษาไทย',
+    'กลุ่มสาระการเรียนรู้คณิตศาสตร์',
+    'กลุ่มสาระการเรียนรู้วิทยาศาสตร์และเทคโนโลยี',
+    'กลุ่มสาระการเรียนรู้สังคมศึกษา ศาสนา และวัฒนธรรม',
+    'กลุ่มสาระการเรียนรู้สุขศึกษาและพลศึกษา',
+    'กลุ่มสาระการเรียนรู้ศิลปะ',
+    'กลุ่มสาระการเรียนรู้การงานอาชีพ',
+    'กลุ่มสาระการเรียนรู้ภาษาต่างประเทศ'
+  ]
+};
+
+export const getSystemSettings = async () => {
+  if (!isFirebaseInitialized) {
+    const local = localStorage.getItem('ks_settings');
+    return local ? safeJsonParse(local, defaultSettings) : defaultSettings;
+  }
+  
+  try {
+    const docRef = doc(db, "system_db", "settings");
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+      const data = docSnap.data() || defaultSettings;
+      localStorage.setItem('ks_settings', JSON.stringify(data));
+      return data;
+    } else {
+      await setDoc(docRef, defaultSettings);
+      localStorage.setItem('ks_settings', JSON.stringify(defaultSettings));
+      return defaultSettings;
+    }
+  } catch (err) {
+    console.warn("Failed to load settings from Firebase, using cache:", err);
+    const local = localStorage.getItem('ks_settings');
+    return local ? safeJsonParse(local, defaultSettings) : defaultSettings;
+  }
+};
+
+export const updateSystemSettings = async (newSettings) => {
+  localStorage.setItem('ks_settings', JSON.stringify(newSettings));
+  
+  if (!isFirebaseInitialized) {
+    return true;
+  }
+  
+  try {
+    await setDoc(doc(db, "system_db", "settings"), newSettings);
+    return true;
+  } catch (e) {
+    console.error("Failed to update settings in Firebase:", e);
+    return false;
+  }
+};

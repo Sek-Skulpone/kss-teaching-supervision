@@ -20,7 +20,9 @@ export default function AdminDashboard({
   onRejectVolunteer,
   onAddTeacher,
   onDeleteTeacher,
-  onUpdateSupervision
+  onUpdateSupervision,
+  settings = { positions: [], departments: [] },
+  onUpdateSettings
 }) {
   const [activeSubTab, setActiveSubTab] = useState('supervisions');
   const [selectedTeacherId, setSelectedTeacherId] = useState({});
@@ -35,9 +37,24 @@ export default function AdminDashboard({
   const [newUsername, setNewUsername] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [newName, setNewName] = useState('');
-  const [newPosition, setNewPosition] = useState('');
+  const [selectedPosition, setSelectedPosition] = useState('');
+  const [selectedDepartment, setSelectedDepartment] = useState('');
   const [newRole, setNewRole] = useState('teacher');
   const [addError, setAddError] = useState('');
+
+  // Settings management states
+  const [newPositionOption, setNewPositionOption] = useState('');
+  const [newDepartmentOption, setNewDepartmentOption] = useState('');
+
+  // Set default dropdown values once settings load
+  React.useEffect(() => {
+    if (settings.positions && settings.positions.length > 0 && !selectedPosition) {
+      setSelectedPosition(settings.positions[0]);
+    }
+    if (settings.departments && settings.departments.length > 0 && !selectedDepartment) {
+      setSelectedDepartment(settings.departments[0]);
+    }
+  }, [settings]);
 
   // Get current date string in local time (YYYY-MM-DD)
   const getTodayDateString = () => {
@@ -87,7 +104,7 @@ export default function AdminDashboard({
     setAddError('');
 
     const formattedUsername = newUsername.trim().toLowerCase();
-    if (!formattedUsername || !newPassword || !newName || !newPosition) {
+    if (!formattedUsername || !newPassword || !newName || !selectedPosition || !selectedDepartment) {
       setAddError('กรุณากรอกข้อมูลให้ครบทุกช่อง');
       return;
     }
@@ -99,11 +116,13 @@ export default function AdminDashboard({
       return;
     }
 
+    const combinedPosition = `${selectedPosition} (${selectedDepartment})`;
+
     const payload = {
       username: formattedUsername,
       password: newPassword,
       name: newName,
-      position: newPosition,
+      position: combinedPosition,
       role: newRole
     };
 
@@ -113,10 +132,89 @@ export default function AdminDashboard({
       setNewUsername('');
       setNewPassword('');
       setNewName('');
-      setNewPosition('');
       setNewRole('teacher');
     } else {
       setAddError('เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง');
+    }
+  };
+
+  const handleAddPositionOption = async (e) => {
+    e.preventDefault();
+    const val = newPositionOption.trim();
+    if (!val) return;
+    if (settings.positions.includes(val)) {
+      alert('ตำแหน่งนี้มีอยู่แล้ว');
+      return;
+    }
+    const updated = {
+      ...settings,
+      positions: [...settings.positions, val]
+    };
+    const success = await onUpdateSettings(updated);
+    if (success) {
+      setNewPositionOption('');
+      setSelectedPosition(val);
+      alert('เพิ่มตัวเลือกตำแหน่งเรียบร้อย');
+    }
+  };
+
+  const handleDeletePositionOption = async (pos) => {
+    if (settings.positions.length <= 1) {
+      alert('ต้องมีตัวเลือกตำแหน่งอย่างน้อย 1 รายการ');
+      return;
+    }
+    if (window.confirm(`คุณต้องการลบตัวเลือกตำแหน่ง: "${pos}" หรือไม่?`)) {
+      const updated = {
+        ...settings,
+        positions: settings.positions.filter(p => p !== pos)
+      };
+      const success = await onUpdateSettings(updated);
+      if (success) {
+        if (selectedPosition === pos) {
+          setSelectedPosition(updated.positions[0] || '');
+        }
+        alert('ลบตัวเลือกตำแหน่งเรียบร้อย');
+      }
+    }
+  };
+
+  const handleAddDepartmentOption = async (e) => {
+    e.preventDefault();
+    const val = newDepartmentOption.trim();
+    if (!val) return;
+    if (settings.departments.includes(val)) {
+      alert('กลุ่มสาระนี้มีอยู่แล้ว');
+      return;
+    }
+    const updated = {
+      ...settings,
+      departments: [...settings.departments, val]
+    };
+    const success = await onUpdateSettings(updated);
+    if (success) {
+      setNewDepartmentOption('');
+      setSelectedDepartment(val);
+      alert('เพิ่มตัวเลือกกลุ่มสาระเรียบร้อย');
+    }
+  };
+
+  const handleDeleteDepartmentOption = async (dept) => {
+    if (settings.departments.length <= 1) {
+      alert('ต้องมีตัวเลือกกลุ่มสาระอย่างน้อย 1 รายการ');
+      return;
+    }
+    if (window.confirm(`คุณต้องการลบตัวเลือกกลุ่มสาระ: "${dept}" หรือไม่?`)) {
+      const updated = {
+        ...settings,
+        departments: settings.departments.filter(d => d !== dept)
+      };
+      const success = await onUpdateSettings(updated);
+      if (success) {
+        if (selectedDepartment === dept) {
+          setSelectedDepartment(updated.departments[0] || '');
+        }
+        alert('ลบตัวเลือกกลุ่มสาระเรียบร้อย');
+      }
     }
   };
 
@@ -675,87 +773,185 @@ export default function AdminDashboard({
 
       {activeSubTab === 'teachers' && (
         <div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem', alignItems: 'start' }}>
-            {/* Add Teacher Card */}
-            <div className="card">
-              <h2 className="card-title">
-                <UserPlus />
-                เพิ่มข้อมูลบุคลากรครูใหม่
-              </h2>
-              
-              {addError && (
-                <div style={{ backgroundColor: '#fde8e8', color: '#e74c3c', padding: '0.75rem', borderRadius: 'var(--radius-sm)', marginBottom: '1rem', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                  <AlertCircle size={14} />
-                  {addError}
-                </div>
-              )}
+          <div className="teachers-admin-grid">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+              {/* Add Teacher Card */}
+              <div className="card" style={{ margin: 0 }}>
+                <h2 className="card-title">
+                  <UserPlus />
+                  เพิ่มข้อมูลบุคลากรครูใหม่
+                </h2>
+                
+                {addError && (
+                  <div style={{ backgroundColor: '#fde8e8', color: '#e74c3c', padding: '0.75rem', borderRadius: 'var(--radius-sm)', marginBottom: '1rem', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                    <AlertCircle size={14} />
+                    {addError}
+                  </div>
+                )}
 
-              <form onSubmit={handleAddTeacherSubmit}>
-                <div className="form-group">
-                  <label>ชื่อ-นามสกุล ครูผู้สอน</label>
-                  <input
-                    type="text"
-                    value={newName}
-                    onChange={(e) => setNewName(e.target.value)}
-                    placeholder="ตัวอย่าง: ครูสมชาย ดีงาม"
-                    required
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label>ตำแหน่ง / กลุ่มสาระการเรียนรู้</label>
-                  <input
-                    type="text"
-                    value={newPosition}
-                    onChange={(e) => setNewPosition(e.target.value)}
-                    placeholder="ตัวอย่าง: ครู ค.ศ. 2 (กลุ่มสาระวิทยาศาสตร์)"
-                    required
-                  />
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                <form onSubmit={handleAddTeacherSubmit}>
                   <div className="form-group">
-                    <label>ชื่อผู้ใช้งาน (Username)</label>
+                    <label>ชื่อ-นามสกุล ครูผู้สอน</label>
                     <input
                       type="text"
-                      value={newUsername}
-                      onChange={(e) => setNewUsername(e.target.value)}
-                      placeholder="ตัวอย่าง: somchai"
+                      value={newName}
+                      onChange={(e) => setNewName(e.target.value)}
+                      placeholder="ตัวอย่าง: ครูสมชาย ดีงาม"
                       required
                     />
                   </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '1.25rem' }}>
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label>ตำแหน่ง</label>
+                      <select
+                        value={selectedPosition}
+                        onChange={(e) => setSelectedPosition(e.target.value)}
+                        style={{ padding: '0.5rem' }}
+                        required
+                      >
+                        <option value="">-- เลือกตำแหน่ง --</option>
+                        {settings.positions && settings.positions.map(pos => (
+                          <option key={pos} value={pos}>{pos}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label>กลุ่มสาระการเรียนรู้</label>
+                      <select
+                        value={selectedDepartment}
+                        onChange={(e) => setSelectedDepartment(e.target.value)}
+                        style={{ padding: '0.5rem' }}
+                        required
+                      >
+                        <option value="">-- เลือกกลุ่มสาระ --</option>
+                        {settings.departments && settings.departments.map(dept => (
+                          <option key={dept} value={dept}>{dept}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                    <div className="form-group">
+                      <label>ชื่อผู้ใช้งาน (Username)</label>
+                      <input
+                        type="text"
+                        value={newUsername}
+                        onChange={(e) => setNewUsername(e.target.value)}
+                        placeholder="ตัวอย่าง: somchai"
+                        required
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label>รหัสผ่าน (Password)</label>
+                      <input
+                        type="password"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        placeholder="ระบุรหัสผ่าน"
+                        required
+                      />
+                    </div>
+                  </div>
+
                   <div className="form-group">
-                    <label>รหัสผ่าน (Password)</label>
-                    <input
-                      type="password"
-                      value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
-                      placeholder="ระบุรหัสผ่าน"
-                      required
-                    />
+                    <label>บทบาทในระบบ (Role)</label>
+                    <select
+                      value={newRole}
+                      onChange={(e) => setNewRole(e.target.value)}
+                      style={{ padding: '0.5rem' }}
+                    >
+                      <option value="teacher">ครูผู้สอนทั่วไป (Teacher)</option>
+                      <option value="admin">ผู้นิเทศ/ผู้บริหาร/ฝ่ายวิชาการ (Admin)</option>
+                    </select>
+                  </div>
+
+                  <button type="submit" className="btn btn-primary" style={{ width: '100%', padding: '0.75rem', marginTop: '0.5rem' }}>
+                    บันทึกข้อมูลบุคลากร
+                  </button>
+                </form>
+              </div>
+
+              {/* Manage Options Card */}
+              <div className="card" style={{ margin: 0 }}>
+                <h2 className="card-title">
+                  <Shield size={18} />
+                  ตั้งค่าตัวเลือกตำแหน่งและกลุ่มสาระ
+                </h2>
+                
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                  {/* Positions Management */}
+                  <div>
+                    <h4 style={{ fontWeight: 700, fontSize: '13px', color: 'var(--primary-color)', marginBottom: '0.4rem' }}>1. จัดการตัวเลือกตำแหน่ง</h4>
+                    <div style={{ display: 'block', maxHeight: '120px', overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: '4px', padding: '0.25rem 0.5rem', backgroundColor: '#fafafa', marginBottom: '0.5rem' }}>
+                      {settings.positions && settings.positions.map(pos => (
+                        <div key={pos} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.2rem 0', borderBottom: '1px solid #eee', fontSize: '12px' }}>
+                          <span>{pos}</span>
+                          <button
+                            type="button"
+                            onClick={() => handleDeletePositionOption(pos)}
+                            style={{ border: 'none', background: 'none', color: '#e74c3c', cursor: 'pointer', fontWeight: 'bold', fontSize: '11px', padding: '0 4px' }}
+                            title="ลบตัวเลือกนี้"
+                          >
+                            ✖
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    <form onSubmit={handleAddPositionOption} style={{ display: 'flex', gap: '0.25rem' }}>
+                      <input
+                        type="text"
+                        placeholder="เพิ่มตำแหน่งใหม่..."
+                        value={newPositionOption}
+                        onChange={(e) => setNewPositionOption(e.target.value)}
+                        style={{ padding: '4px 8px', fontSize: '12px', flex: 1, minWidth: 0 }}
+                        required
+                      />
+                      <button type="submit" className="btn btn-primary" style={{ padding: '4px 8px', fontSize: '12px', whiteSpace: 'nowrap' }}>
+                        เพิ่ม
+                      </button>
+                    </form>
+                  </div>
+
+                  {/* Departments Management */}
+                  <div>
+                    <h4 style={{ fontWeight: 700, fontSize: '13px', color: 'var(--primary-color)', marginBottom: '0.4rem' }}>2. จัดการตัวเลือกกลุ่มสาระ</h4>
+                    <div style={{ display: 'block', maxHeight: '120px', overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: '4px', padding: '0.25rem 0.5rem', backgroundColor: '#fafafa', marginBottom: '0.5rem' }}>
+                      {settings.departments && settings.departments.map(dept => (
+                        <div key={dept} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.2rem 0', borderBottom: '1px solid #eee', fontSize: '12px' }}>
+                          <span style={{ textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', maxWidth: '210px' }} title={dept}>{dept}</span>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteDepartmentOption(dept)}
+                            style={{ border: 'none', background: 'none', color: '#e74c3c', cursor: 'pointer', fontWeight: 'bold', fontSize: '11px', padding: '0 4px' }}
+                            title="ลบตัวเลือกนี้"
+                          >
+                            ✖
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    <form onSubmit={handleAddDepartmentOption} style={{ display: 'flex', gap: '0.25rem' }}>
+                      <input
+                        type="text"
+                        placeholder="เพิ่มกลุ่มสาระใหม่..."
+                        value={newDepartmentOption}
+                        onChange={(e) => setNewDepartmentOption(e.target.value)}
+                        style={{ padding: '4px 8px', fontSize: '12px', flex: 1, minWidth: 0 }}
+                        required
+                      />
+                      <button type="submit" className="btn btn-primary" style={{ padding: '4px 8px', fontSize: '12px', whiteSpace: 'nowrap' }}>
+                        เพิ่ม
+                      </button>
+                    </form>
                   </div>
                 </div>
-
-                <div className="form-group">
-                  <label>บทบาทในระบบ (Role)</label>
-                  <select
-                    value={newRole}
-                    onChange={(e) => setNewRole(e.target.value)}
-                    style={{ padding: '0.5rem' }}
-                  >
-                    <option value="teacher">ครูผู้สอนทั่วไป (Teacher)</option>
-                    <option value="admin">ผู้นิเทศ/ผู้บริหาร/ฝ่ายวิชาการ (Admin)</option>
-                  </select>
-                </div>
-
-                <button type="submit" className="btn btn-primary" style={{ width: '100%', padding: '0.75rem', marginTop: '0.5rem' }}>
-                  บันทึกข้อมูลบุคลากร
-                </button>
-              </form>
+              </div>
             </div>
 
             {/* Teacher Directory Card */}
-            <div className="card" style={{ flex: 2 }}>
+            <div className="card" style={{ flex: 2, margin: 0 }}>
               <h2 className="card-title">
                 <Users />
                 ทำเนียบข้อมูลบุคลากรครูในระบบ ({teachers.length} ท่าน)

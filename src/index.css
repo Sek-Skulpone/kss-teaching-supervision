@@ -881,3 +881,16 @@ tr:hover td {
   color: var(--primary-color);
   font-size: var(--font-base);
 }
+
+.teachers-admin-grid {
+  display: grid;
+  grid-template-columns: 360px 1fr;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+@media (max-width: 992px) {
+  .teachers-admin-grid {
+    grid-template-columns: 1fr;
+  }
+}

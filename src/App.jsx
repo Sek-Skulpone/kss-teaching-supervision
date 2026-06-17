@@ -35,7 +35,9 @@ import {
   getTermPlans,
   addTermPlan,
   updateTermPlan,
-  deleteTermPlan
+  deleteTermPlan,
+  getSystemSettings,
+  updateSystemSettings
 } from './db';
 
 export default function App() {
@@ -49,6 +51,7 @@ export default function App() {
   const [supervisions, setSupervisions] = useState([]);
   const [teachers, setTeachers] = useState([]);
   const [termPlans, setTermPlans] = useState([]);
+  const [settings, setSettings] = useState({ positions: [], departments: [] });
   const [activeMainTab, setActiveMainTab] = useState('calendar');
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -63,16 +66,18 @@ export default function App() {
     const loadData = async () => {
       setIsLoading(true);
       try {
-        const [usersData, supervisionsData, termPlansData] = await Promise.all([
+        const [usersData, supervisionsData, termPlansData, settingsData] = await Promise.all([
           getUsers(),
           getSupervisions(),
-          getTermPlans()
+          getTermPlans(),
+          getSystemSettings()
         ]);
         setTeachers(usersData);
         setSupervisions(supervisionsData);
         setTermPlans(termPlansData);
+        setSettings(settingsData);
       } catch (e) {
-        console.error("Error loading initial data from Google Sheets:", e);
+        console.error("Error loading initial data from database:", e);
       } finally {
         setIsLoading(false);
       }
@@ -190,6 +195,23 @@ export default function App() {
         if (currentUser && currentUser.id === teacherId) {
           handleLogout();
         }
+        return true;
+      }
+      return false;
+    } catch (e) {
+      console.error(e);
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleUpdateSettings = async (newSettings) => {
+    setIsLoading(true);
+    try {
+      const success = await updateSystemSettings(newSettings);
+      if (success) {
+        setSettings(newSettings);
         return true;
       }
       return false;
@@ -573,6 +595,8 @@ export default function App() {
               onAddTeacher={handleAddTeacher}
               onDeleteTeacher={handleDeleteTeacher}
               onUpdateSupervision={handleUpdateSupervision}
+              settings={settings}
+              onUpdateSettings={handleUpdateSettings}
             />
           ) : (
             <TeacherDashboard
