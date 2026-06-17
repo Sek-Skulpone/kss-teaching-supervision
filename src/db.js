@@ -1,7 +1,19 @@
-// Google Sheets database connector using Sheet Best API (Single Sheet JSON Strategy)
-// This enables zero-configuration online database syncing that works on any blank Google Sheet.
+// Firebase Database Connector (Cloud Firestore)
+// Optimized with single-document collections to minimize read/write count (completely free-tier safe)
+import { initializeApp } from 'firebase/app';
+import { getFirestore, doc, getDoc, setDoc } from 'firebase/firestore';
 
-const BASE_API_URL = "https://api.sheetbest.com/sheets/6db73680-0b0d-4656-a6b0-b25c01ea5c1a";
+// ==========================================================================
+// 💡 STEP 1: REPLACE THIS CONFIG WITH YOUR OWN FIREBASE WEBSITES CONFIG
+// ==========================================================================
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_AUTH_DOMAIN",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_STORAGE_BUCKET",
+  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+  appId: "YOUR_APP_ID"
+};
 
 const SEED_USERS = [
   { id: 'admin', username: 'admin', password: '123', name: 'ผอ.สมเกียรติ ยิ่งใหญ่', role: 'admin', position: 'ผู้อำนวยการโรงเรียน' },
@@ -13,9 +25,9 @@ const SEED_USERS = [
   { id: 'nonglak', username: 'nonglak', password: '123', name: 'ครูนงลักษณ์ ไพเราะ', role: 'teacher', position: 'ครู (กลุ่มสาระศิลปะ)' }
 ];
 
-// Helper to safely parse JSON strings from sheet cells
+// Helper to safely parse JSON strings
 const safeJsonParse = (str, fallback) => {
-  if (!str || str === 'null' || str === '[]' || str === '{}' || str === '""' || str === "''") return fallback;
+  if (!str) return fallback;
   try {
     return JSON.parse(str);
   } catch (e) {
@@ -23,7 +35,25 @@ const safeJsonParse = (str, fallback) => {
   }
 };
 
-// Database Cache & Sync State
+// Initialize Firebase
+let app;
+let db;
+let isFirebaseInitialized = false;
+
+if (firebaseConfig.apiKey && firebaseConfig.apiKey !== "YOUR_API_KEY") {
+  try {
+    app = initializeApp(firebaseConfig);
+    db = getFirestore(app);
+    isFirebaseInitialized = true;
+    console.log("Firebase Cloud Firestore successfully connected.");
+  } catch (err) {
+    console.error("Firebase initialization failed:", err);
+  }
+} else {
+  console.warn("Using offline LocalStorage mode. Paste your firebaseConfig in src/db.js to sync online.");
+}
+
+// Memory cache
 let dbCache = {
   teachers: null,
   supervisions: null,
@@ -39,73 +69,77 @@ const ensureDBLoaded = async (force = false) => {
     return dbCache;
   }
   
+  if (!isFirebaseInitialized) {
+    const teachers = safeJsonParse(localStorage.getItem('ks_teachers'), SEED_USERS);
+    const supervisions = safeJsonParse(localStorage.getItem('ks_supervisions'), []);
+    const termPlans = safeJsonParse(localStorage.getItem('ks_term_plans'), []);
+    dbCache = { teachers, supervisions, termPlans, lastLoaded: now };
+    return dbCache;
+  }
+  
   try {
-    const response = await fetch(BASE_API_URL);
-    if (!response.ok) throw new Error("API request failed");
-    const rows = await response.json();
+    // Parallel fetch from Firestore
+    const [teachersSnap, supervisionsSnap, termPlansSnap] = await Promise.all([
+      getDoc(doc(db, "system_db", "teachers")),
+      getDoc(doc(db, "system_db", "supervisions")),
+      getDoc(doc(db, "system_db", "term_plans"))
+    ]);
     
-    let teachers = [];
+    let teachers = SEED_USERS;
     let supervisions = [];
     let termPlans = [];
     
-    const teachersRow = Array.isArray(rows) ? rows.find(r => r.datatype === 'teachers') : null;
-    const supervisionsRow = Array.isArray(rows) ? rows.find(r => r.datatype === 'supervisions') : null;
-    const termPlansRow = Array.isArray(rows) ? rows.find(r => r.datatype === 'term_plans') : null;
-    
-    if (!teachersRow || !supervisionsRow || !termPlansRow) {
-      // Initialize sheet with default empty arrays/seeds
-      teachers = SEED_USERS;
-      supervisions = [];
-      termPlans = [];
-      
-      // Post initialization data to create headers (datatype, data) and rows automatically
-      await fetch(BASE_API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify([
-          { datatype: "teachers", data: JSON.stringify(SEED_USERS) },
-          { datatype: "supervisions", data: JSON.stringify([]) },
-          { datatype: "term_plans", data: JSON.stringify([]) }
-        ])
-      });
+    // Process Teachers
+    if (teachersSnap.exists()) {
+      teachers = teachersSnap.data().list || SEED_USERS;
     } else {
-      teachers = safeJsonParse(teachersRow.data, SEED_USERS);
-      supervisions = safeJsonParse(supervisionsRow.data, []);
-      termPlans = safeJsonParse(termPlansRow.data, []);
+      await setDoc(doc(db, "system_db", "teachers"), { list: SEED_USERS });
+    }
+    
+    // Process Supervisions
+    if (supervisionsSnap.exists()) {
+      supervisions = supervisionsSnap.data().list || [];
+    } else {
+      await setDoc(doc(db, "system_db", "supervisions"), { list: [] });
+    }
+    
+    // Process Term Plans
+    if (termPlansSnap.exists()) {
+      termPlans = termPlansSnap.data().list || [];
+    } else {
+      await setDoc(doc(db, "system_db", "term_plans"), { list: [] });
     }
     
     dbCache = { teachers, supervisions, termPlans, lastLoaded: now };
     
-    // Save to local storage cache for instant offline fallback
+    // Cache locally
     localStorage.setItem('ks_teachers', JSON.stringify(teachers));
     localStorage.setItem('ks_supervisions', JSON.stringify(supervisions));
     localStorage.setItem('ks_term_plans', JSON.stringify(termPlans));
     
     return dbCache;
   } catch (e) {
-    console.warn("DB load failed, using local storage cache:", e);
+    console.warn("Firestore fetch failed, using local storage cache:", e);
     const teachers = safeJsonParse(localStorage.getItem('ks_teachers'), SEED_USERS);
     const supervisions = safeJsonParse(localStorage.getItem('ks_supervisions'), []);
     const termPlans = safeJsonParse(localStorage.getItem('ks_term_plans'), []);
-    
     dbCache = { teachers, supervisions, termPlans, lastLoaded: now };
     return dbCache;
   }
 };
 
 const saveCollection = async (datatype, dataArray) => {
-  // Update local storage cache
   localStorage.setItem(`ks_${datatype}`, JSON.stringify(dataArray));
   
+  if (!isFirebaseInitialized) {
+    return true;
+  }
+  
   try {
-    const response = await fetch(`${BASE_API_URL}/datatype/${datatype}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ data: JSON.stringify(dataArray) })
-    });
-    return response.ok;
+    await setDoc(doc(db, "system_db", datatype), { list: dataArray });
+    return true;
   } catch (e) {
-    console.error(`Failed to save ${datatype} online:`, e);
+    console.error(`Failed to save ${datatype} to Firestore:`, e);
     return false;
   }
 };
@@ -115,25 +149,25 @@ const saveCollection = async (datatype, dataArray) => {
    ========================================================================== */
 
 export const getUsers = async () => {
-  const db = await ensureDBLoaded();
-  return db.teachers;
+  const dbData = await ensureDBLoaded();
+  return dbData.teachers;
 };
 
 export const addTeacher = async (teacherData) => {
-  const db = await ensureDBLoaded();
+  const dbData = await ensureDBLoaded();
   const newTeacher = {
     id: `teacher-${Date.now()}`,
     ...teacherData
   };
-  db.teachers.push(newTeacher);
-  const success = await saveCollection('teachers', db.teachers);
+  dbData.teachers.push(newTeacher);
+  const success = await saveCollection('teachers', dbData.teachers);
   return success ? newTeacher : null;
 };
 
 export const deleteTeacher = async (teacherId) => {
-  const db = await ensureDBLoaded();
-  db.teachers = db.teachers.filter(t => t.id !== teacherId);
-  const success = await saveCollection('teachers', db.teachers);
+  const dbData = await ensureDBLoaded();
+  dbData.teachers = dbData.teachers.filter(t => t.id !== teacherId);
+  const success = await saveCollection('teachers', dbData.teachers);
   return success;
 };
 
@@ -142,12 +176,12 @@ export const deleteTeacher = async (teacherId) => {
    ========================================================================== */
 
 export const getSupervisions = async () => {
-  const db = await ensureDBLoaded();
-  return db.supervisions;
+  const dbData = await ensureDBLoaded();
+  return dbData.supervisions;
 };
 
 export const addSupervision = async (supervision) => {
-  const db = await ensureDBLoaded();
+  const dbData = await ensureDBLoaded();
   const newSupervision = {
     id: `sup-${Date.now()}`,
     status: 'pending',
@@ -158,33 +192,33 @@ export const addSupervision = async (supervision) => {
     ...supervision
   };
   
-  db.supervisions.push(newSupervision);
-  const success = await saveCollection('supervisions', db.supervisions);
+  dbData.supervisions.push(newSupervision);
+  const success = await saveCollection('supervisions', dbData.supervisions);
   return success ? newSupervision : null;
 };
 
 export const updateSupervision = async (supervisionId, updatedFields) => {
-  const db = await ensureDBLoaded();
-  db.supervisions = db.supervisions.map(s => {
+  const dbData = await ensureDBLoaded();
+  dbData.supervisions = dbData.supervisions.map(s => {
     if (s.id === supervisionId) {
       return { ...s, ...updatedFields };
     }
     return s;
   });
-  const success = await saveCollection('supervisions', db.supervisions);
+  const success = await saveCollection('supervisions', dbData.supervisions);
   return success;
 };
 
 export const deleteSupervision = async (supervisionId) => {
-  const db = await ensureDBLoaded();
-  db.supervisions = db.supervisions.filter(s => s.id !== supervisionId);
-  const success = await saveCollection('supervisions', db.supervisions);
+  const dbData = await ensureDBLoaded();
+  dbData.supervisions = dbData.supervisions.filter(s => s.id !== supervisionId);
+  const success = await saveCollection('supervisions', dbData.supervisions);
   return success;
 };
 
 export const volunteerToSupervise = async (supervisionId, teacherId, teacherName) => {
-  const db = await ensureDBLoaded();
-  db.supervisions = db.supervisions.map(s => {
+  const dbData = await ensureDBLoaded();
+  dbData.supervisions = dbData.supervisions.map(s => {
     if (s.id === supervisionId) {
       return {
         ...s,
@@ -195,14 +229,14 @@ export const volunteerToSupervise = async (supervisionId, teacherId, teacherName
     }
     return s;
   });
-  const success = await saveCollection('supervisions', db.supervisions);
+  const success = await saveCollection('supervisions', dbData.supervisions);
   return success;
 };
 
 export const approveVolunteer = async (supervisionId) => {
-  const db = await ensureDBLoaded();
+  const dbData = await ensureDBLoaded();
   let success = false;
-  db.supervisions = db.supervisions.map(s => {
+  dbData.supervisions = dbData.supervisions.map(s => {
     if (s.id === supervisionId && s.volunteerId) {
       const supervisors = [...(s.supervisors || [])];
       if (!supervisors.some(sup => sup.id === s.volunteerId)) {
@@ -221,16 +255,16 @@ export const approveVolunteer = async (supervisionId) => {
     return s;
   });
   if (success) {
-    await saveCollection('supervisions', db.supervisions);
+    await saveCollection('supervisions', dbData.supervisions);
     return true;
   }
   return false;
 };
 
 export const rejectVolunteer = async (supervisionId) => {
-  const db = await ensureDBLoaded();
+  const dbData = await ensureDBLoaded();
   let success = false;
-  db.supervisions = db.supervisions.map(s => {
+  dbData.supervisions = dbData.supervisions.map(s => {
     if (s.id === supervisionId) {
       const supervisorsCount = s.supervisors ? s.supervisors.length : 0;
       const status = supervisorsCount >= 2 ? 'approved' : 'pending';
@@ -245,16 +279,16 @@ export const rejectVolunteer = async (supervisionId) => {
     return s;
   });
   if (success) {
-    await saveCollection('supervisions', db.supervisions);
+    await saveCollection('supervisions', dbData.supervisions);
     return true;
   }
   return false;
 };
 
 export const assignSupervisor = async (supervisionId, supervisorId, supervisorName) => {
-  const db = await ensureDBLoaded();
+  const dbData = await ensureDBLoaded();
   let success = false;
-  db.supervisions = db.supervisions.map(s => {
+  dbData.supervisions = dbData.supervisions.map(s => {
     if (s.id === supervisionId) {
       const supervisors = [...(s.supervisors || [])];
       if (!supervisors.some(sup => sup.id === supervisorId)) {
@@ -277,16 +311,16 @@ export const assignSupervisor = async (supervisionId, supervisorId, supervisorNa
     return s;
   });
   if (success) {
-    await saveCollection('supervisions', db.supervisions);
+    await saveCollection('supervisions', dbData.supervisions);
     return true;
   }
   return false;
 };
 
 export const removeSupervisor = async (supervisionId, supervisorId) => {
-  const db = await ensureDBLoaded();
+  const dbData = await ensureDBLoaded();
   let success = false;
-  db.supervisions = db.supervisions.map(s => {
+  dbData.supervisions = dbData.supervisions.map(s => {
     if (s.id === supervisionId) {
       const supervisors = (s.supervisors || []).filter(sup => sup.id !== supervisorId);
       let status = s.status;
@@ -307,19 +341,19 @@ export const removeSupervisor = async (supervisionId, supervisorId) => {
     return s;
   });
   if (success) {
-    await saveCollection('supervisions', db.supervisions);
+    await saveCollection('supervisions', dbData.supervisions);
     return true;
   }
   return false;
 };
 
 export const submitPostTeachingRecord = async (supervisionId, record) => {
-  const db = await ensureDBLoaded();
+  const dbData = await ensureDBLoaded();
   const fullRecord = {
     ...record,
     submittedAt: new Date().toISOString()
   };
-  db.supervisions = db.supervisions.map(s => {
+  dbData.supervisions = dbData.supervisions.map(s => {
     if (s.id === supervisionId) {
       return {
         ...s,
@@ -329,7 +363,7 @@ export const submitPostTeachingRecord = async (supervisionId, record) => {
     }
     return s;
   });
-  const success = await saveCollection('supervisions', db.supervisions);
+  const success = await saveCollection('supervisions', dbData.supervisions);
   return success;
 };
 
@@ -338,38 +372,38 @@ export const submitPostTeachingRecord = async (supervisionId, record) => {
    ========================================================================== */
 
 export const getTermPlans = async () => {
-  const db = await ensureDBLoaded();
-  return db.termPlans;
+  const dbData = await ensureDBLoaded();
+  return dbData.termPlans;
 };
 
 export const addTermPlan = async (planData) => {
-  const db = await ensureDBLoaded();
+  const dbData = await ensureDBLoaded();
   const newPlan = {
     id: `plan-${Date.now()}`,
     postLessonRecord: null,
     submittedAt: new Date().toISOString(),
     ...planData
   };
-  db.termPlans.push(newPlan);
-  const success = await saveCollection('term_plans', db.termPlans);
+  dbData.termPlans.push(newPlan);
+  const success = await saveCollection('term_plans', dbData.termPlans);
   return success ? newPlan : null;
 };
 
 export const updateTermPlan = async (planId, updatedFields) => {
-  const db = await ensureDBLoaded();
-  db.termPlans = db.termPlans.map(p => {
+  const dbData = await ensureDBLoaded();
+  dbData.termPlans = dbData.termPlans.map(p => {
     if (p.id === planId) {
       return { ...p, ...updatedFields };
     }
     return p;
   });
-  const success = await saveCollection('term_plans', db.termPlans);
+  const success = await saveCollection('term_plans', dbData.termPlans);
   return success;
 };
 
 export const deleteTermPlan = async (planId) => {
-  const db = await ensureDBLoaded();
-  db.termPlans = db.termPlans.filter(p => p.id !== planId);
-  const success = await saveCollection('term_plans', db.termPlans);
+  const dbData = await ensureDBLoaded();
+  dbData.termPlans = dbData.termPlans.filter(p => p.id !== planId);
+  const success = await saveCollection('term_plans', dbData.termPlans);
   return success;
 };
