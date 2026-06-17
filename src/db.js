@@ -1,4 +1,4 @@
-// Mock Database using LocalStorage for Khok Si Witthayasan School Teaching Supervision System
+// Database logic using Sheet Best API for Google Sheets (Teaching Supervision System)
 
 const SEED_USERS = [
   { id: 'admin', username: 'admin', password: '123', name: 'ผอ.สมเกียรติ ยิ่งใหญ่', role: 'admin', position: 'ผู้อำนวยการโรงเรียน' },
@@ -10,118 +10,12 @@ const SEED_USERS = [
   { id: 'nonglak', username: 'nonglak', password: '123', name: 'ครูนงลักษณ์ ไพเราะ', role: 'teacher', position: 'ครู (กลุ่มสาระศิลปะ)' }
 ];
 
-// Seed initial supervisions to show something beautiful on the calendar immediately
-const getInitialSupervisions = () => {
-  const today = new Date();
-  
-  // Helper to format date offset from today
-  const getDateString = (offsetDays) => {
-    const d = new Date(today);
-    d.setDate(today.getDate() + offsetDays);
-    return d.toISOString().split('T')[0];
-  };
-
-  return [
-    {
-      id: 'sup-1',
-      teacherId: 'wilai',
-      teacherName: 'ครูวิไล รักเรียน',
-      subject: 'วิทยาศาสตร์กายภาพ',
-      grade: 'ม.5',
-      room: '1',
-      date: getDateString(0), // Today
-      time: '09:00',
-      lessonPlanUrl: 'https://docs.google.com/document/d/1mock-plan-science-5-1/edit',
-      status: 'approved',
-      supervisors: [
-        { id: 'somchai', name: 'ครูสมชาย ดีงาม' },
-        { id: 'somsri', name: 'ครูสมศรี แสนดี' }
-      ],
-      volunteerId: null,
-      volunteerName: null,
-      postTeachingRecord: null
-    },
-    {
-      id: 'sup-2',
-      teacherId: 'somsri',
-      teacherName: 'ครูสมศรี แสนดี',
-      subject: 'ภาษาไทยพื้นฐาน',
-      grade: 'ม.3',
-      room: '2',
-      date: getDateString(0), // Today
-      time: '13:00',
-      lessonPlanUrl: 'https://docs.google.com/document/d/1mock-plan-thai-3-2/edit',
-      status: 'approved',
-      supervisors: [
-        { id: 'academic', name: 'ครูวิชาการ (หัวหน้างานวิชาการ)' },
-        { id: 'somchai', name: 'ครูสมชาย ดีงาม' }
-      ],
-      volunteerId: null,
-      volunteerName: null,
-      postTeachingRecord: {
-        studentOutcome: 'นักเรียน 90% สามารถแต่งคำประพันธ์ประเภทกลอนสุภาพได้ถูกต้อง อีก 10% ยังสับสนเรื่องสัมผัสสระ',
-        problems: 'นักเรียนบางส่วนลืมทำการบ้านล่วงหน้า ทำให้การจัดกิจกรรมกลุ่มล่าช้ากว่าเวลาที่กำหนดเล็กน้อย',
-        solutions: 'จัดกลุ่มแบบคละความสามารถเพื่อให้เพื่อนช่วยเพื่อน และปรับเวลาใบงานย่อยให้กระชับขึ้น',
-        submittedAt: new Date().toISOString()
-      }
-    },
-    {
-      id: 'sup-3',
-      teacherId: 'wittaya',
-      teacherName: 'ครูวิทยา เก่งกล้า',
-      subject: 'ภาษาอังกฤษเพื่อการสื่อสาร',
-      grade: 'ม.6',
-      room: '1',
-      date: getDateString(1), // Tomorrow
-      time: '10:30',
-      lessonPlanUrl: 'https://docs.google.com/document/d/1mock-plan-eng-6-1/edit',
-      status: 'pending',
-      supervisors: [],
-      volunteerId: null,
-      volunteerName: null,
-      postTeachingRecord: null
-    },
-    {
-      id: 'sup-4',
-      teacherId: 'somchai',
-      teacherName: 'ครูสมชาย ดีงาม',
-      subject: 'คณิตศาสตร์เพิ่มเติม',
-      grade: 'ม.4',
-      room: '3',
-      date: getDateString(2), // 2 days from now
-      time: '14:00',
-      lessonPlanUrl: 'https://docs.google.com/document/d/1mock-plan-math-4-3/edit',
-      status: 'pending_approval',
-      supervisors: [],
-      volunteerId: 'nonglak',
-      volunteerName: 'ครูนงลักษณ์ ไพเราะ',
-      postTeachingRecord: null
-    }
-  ];
-};
+const SHEET_API_URL = "https://api.sheetbest.com/sheets/6db73680-0b0d-4656-a6b0-b25c01ea5c1a";
 
 export const initializeDB = () => {
+  // Static seed users local config initialization
   if (!localStorage.getItem('ks_users')) {
     localStorage.setItem('ks_users', JSON.stringify(SEED_USERS));
-  } else {
-    // Proactively update SEED_USERS in localStorage to match the new names
-    localStorage.setItem('ks_users', JSON.stringify(SEED_USERS));
-  }
-  
-  const existingSupervisions = localStorage.getItem('ks_supervisions');
-  if (!existingSupervisions) {
-    localStorage.setItem('ks_supervisions', JSON.stringify(getInitialSupervisions()));
-  } else {
-    try {
-      const parsed = JSON.parse(existingSupervisions);
-      // Migrate if legacy single supervisor schema is found
-      const needsMigration = parsed.some(s => ('supervisorId' in s) || !s.supervisors);
-      if (needsMigration) {
-        localStorage.setItem('ks_supervisions', JSON.stringify(getInitialSupervisions()));
-      }
-    } catch (e) {
-      localStorage.setItem('ks_supervisions', JSON.stringify(getInitialSupervisions()));
-    }
   }
 };
 
@@ -130,155 +24,226 @@ export const getUsers = () => {
   return JSON.parse(localStorage.getItem('ks_users'));
 };
 
-export const getSupervisions = () => {
-  initializeDB();
-  return JSON.parse(localStorage.getItem('ks_supervisions'));
+// Safe JSON parser to avoid crash
+const safeJsonParse = (str, fallback) => {
+  if (!str || str === 'null' || str === '[]' || str === '{}' || str === '""' || str === "''") return fallback;
+  try {
+    return JSON.parse(str);
+  } catch (e) {
+    return fallback;
+  }
 };
 
-export const saveSupervisions = (supervisions) => {
-  localStorage.setItem('ks_supervisions', JSON.stringify(supervisions));
+// 1. Get all supervisions
+export const getSupervisions = async () => {
+  try {
+    const response = await fetch(SHEET_API_URL);
+    const data = await response.json();
+    if (!Array.isArray(data)) return [];
+    return data.map(item => ({
+      ...item,
+      supervisors: typeof item.supervisors === 'string' ? safeJsonParse(item.supervisors, []) : (item.supervisors || []),
+      postTeachingRecord: typeof item.postTeachingRecord === 'string' ? safeJsonParse(item.postTeachingRecord, null) : (item.postTeachingRecord || null)
+    }));
+  } catch (e) {
+    console.error("Error fetching supervisions from Google Sheets:", e);
+    return [];
+  }
 };
 
-export const addSupervision = (supervision) => {
-  const supervisions = getSupervisions();
+// 2. Add new supervision record
+export const addSupervision = async (supervision) => {
   const newSupervision = {
     id: `sup-${Date.now()}`,
     status: 'pending',
-    supervisors: [],
-    volunteerId: null,
-    volunteerName: null,
-    postTeachingRecord: null,
+    supervisors: JSON.stringify([]),
+    volunteerId: '',
+    volunteerName: '',
+    postTeachingRecord: '',
     ...supervision
   };
-  supervisions.push(newSupervision);
-  saveSupervisions(supervisions);
-  return newSupervision;
-};
-
-export const volunteerToSupervise = (supervisionId, teacherId, teacherName) => {
-  const supervisions = getSupervisions();
-  const index = supervisions.findIndex(s => s.id === supervisionId);
-  if (index !== -1) {
-    supervisions[index].status = 'pending_approval';
-    supervisions[index].volunteerId = teacherId;
-    supervisions[index].volunteerName = teacherName;
-    saveSupervisions(supervisions);
-    return true;
+  try {
+    await fetch(SHEET_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newSupervision)
+    });
+    return {
+      ...newSupervision,
+      supervisors: [],
+      postTeachingRecord: null
+    };
+  } catch (e) {
+    console.error("Error adding row to Google Sheets:", e);
   }
-  return false;
 };
 
-export const approveVolunteer = (supervisionId) => {
-  const supervisions = getSupervisions();
-  const index = supervisions.findIndex(s => s.id === supervisionId);
-  if (index !== -1 && supervisions[index].volunteerId) {
-    const volId = supervisions[index].volunteerId;
-    const volName = supervisions[index].volunteerName;
-    
-    if (!supervisions[index].supervisors) {
-      supervisions[index].supervisors = [];
-    }
-    
-    if (!supervisions[index].supervisors.some(s => s.id === volId)) {
-      supervisions[index].supervisors.push({ id: volId, name: volName });
-    }
-    
-    supervisions[index].volunteerId = null;
-    supervisions[index].volunteerName = null;
-    
-    // Status becomes 'approved' ONLY if there are at least 2 supervisors
-    if (supervisions[index].supervisors.length >= 2) {
-      supervisions[index].status = 'approved';
-    } else {
-      supervisions[index].status = 'pending';
-    }
-    
-    saveSupervisions(supervisions);
-    return true;
+// 3. Volunteer for supervision
+export const volunteerToSupervise = async (supervisionId, teacherId, teacherName) => {
+  try {
+    const response = await fetch(`${SHEET_API_URL}/id/${supervisionId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        status: 'pending_approval',
+        volunteerId: teacherId,
+        volunteerName: teacherName
+      })
+    });
+    return response.ok;
+  } catch (e) {
+    console.error("Error volunteering in Google Sheets:", e);
+    return false;
   }
-  return false;
 };
 
-export const rejectVolunteer = (supervisionId) => {
-  const supervisions = getSupervisions();
-  const index = supervisions.findIndex(s => s.id === supervisionId);
-  if (index !== -1) {
-    supervisions[index].volunteerId = null;
-    supervisions[index].volunteerName = null;
-    
-    if (supervisions[index].supervisors && supervisions[index].supervisors.length >= 2) {
-      supervisions[index].status = 'approved';
-    } else {
-      supervisions[index].status = 'pending';
-    }
-    
-    saveSupervisions(supervisions);
-    return true;
-  }
-  return false;
-};
-
-export const assignSupervisor = (supervisionId, supervisorId, supervisorName) => {
-  const supervisions = getSupervisions();
-  const index = supervisions.findIndex(s => s.id === supervisionId);
-  if (index !== -1) {
-    if (!supervisions[index].supervisors) {
-      supervisions[index].supervisors = [];
-    }
-    
-    if (!supervisions[index].supervisors.some(s => s.id === supervisorId)) {
-      supervisions[index].supervisors.push({ id: supervisorId, name: supervisorName });
-    }
-    
-    if (supervisions[index].volunteerId === supervisorId) {
-      supervisions[index].volunteerId = null;
-      supervisions[index].volunteerName = null;
-    }
-    
-    // Status becomes 'approved' ONLY if there are at least 2 supervisors
-    if (supervisions[index].supervisors.length >= 2) {
-      supervisions[index].status = 'approved';
-    } else {
-      supervisions[index].status = 'pending';
-    }
-    
-    saveSupervisions(supervisions);
-    return true;
-  }
-  return false;
-};
-
-export const removeSupervisor = (supervisionId, supervisorId) => {
-  const supervisions = getSupervisions();
-  const index = supervisions.findIndex(s => s.id === supervisionId);
-  if (index !== -1 && supervisions[index].supervisors) {
-    supervisions[index].supervisors = supervisions[index].supervisors.filter(s => s.id !== supervisorId);
-    
-    if (supervisions[index].supervisors.length >= 2) {
-      supervisions[index].status = 'approved';
-    } else {
-      if (supervisions[index].status !== 'completed') {
-        supervisions[index].status = 'pending';
+// 4. Approve volunteer
+export const approveVolunteer = async (supervisionId) => {
+  try {
+    const all = await getSupervisions();
+    const item = all.find(s => s.id === supervisionId);
+    if (item && item.volunteerId) {
+      const supervisors = [...item.supervisors];
+      if (!supervisors.some(s => s.id === item.volunteerId)) {
+        supervisors.push({ id: item.volunteerId, name: item.volunteerName });
       }
+      const status = supervisors.length >= 2 ? 'approved' : 'pending';
+      
+      const response = await fetch(`${SHEET_API_URL}/id/${supervisionId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: status,
+          supervisors: JSON.stringify(supervisors),
+          volunteerId: '',
+          volunteerName: ''
+        })
+      });
+      return response.ok;
     }
-    
-    saveSupervisions(supervisions);
-    return true;
+    return false;
+  } catch (e) {
+    console.error("Error approving volunteer in Google Sheets:", e);
+    return false;
   }
-  return false;
 };
 
-export const submitPostTeachingRecord = (supervisionId, record) => {
-  const supervisions = getSupervisions();
-  const index = supervisions.findIndex(s => s.id === supervisionId);
-  if (index !== -1) {
-    supervisions[index].status = 'completed';
-    supervisions[index].postTeachingRecord = {
+// 5. Reject volunteer
+export const rejectVolunteer = async (supervisionId) => {
+  try {
+    const all = await getSupervisions();
+    const item = all.find(s => s.id === supervisionId);
+    if (item) {
+      const supervisorsCount = item.supervisors ? item.supervisors.length : 0;
+      const status = supervisorsCount >= 2 ? 'approved' : 'pending';
+      
+      const response = await fetch(`${SHEET_API_URL}/id/${supervisionId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: status,
+          volunteerId: '',
+          volunteerName: ''
+        })
+      });
+      return response.ok;
+    }
+    return false;
+  } catch (e) {
+    console.error("Error rejecting volunteer in Google Sheets:", e);
+    return false;
+  }
+};
+
+// 6. Direct assign supervisor
+export const assignSupervisor = async (supervisionId, supervisorId, supervisorName) => {
+  try {
+    const all = await getSupervisions();
+    const item = all.find(s => s.id === supervisionId);
+    if (item) {
+      const supervisors = [...item.supervisors];
+      if (!supervisors.some(s => s.id === supervisorId)) {
+        supervisors.push({ id: supervisorId, name: supervisorName });
+      }
+      const status = supervisors.length >= 2 ? 'approved' : 'pending';
+      
+      const updatePayload = {
+        status: status,
+        supervisors: JSON.stringify(supervisors)
+      };
+      
+      if (item.volunteerId === supervisorId) {
+        updatePayload.volunteerId = '';
+        updatePayload.volunteerName = '';
+      }
+      
+      const response = await fetch(`${SHEET_API_URL}/id/${supervisionId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatePayload)
+      });
+      return response.ok;
+    }
+    return false;
+  } catch (e) {
+    console.error("Error assigning supervisor in Google Sheets:", e);
+    return false;
+  }
+};
+
+// 7. Remove supervisor
+export const removeSupervisor = async (supervisionId, supervisorId) => {
+  try {
+    const all = await getSupervisions();
+    const item = all.find(s => s.id === supervisionId);
+    if (item) {
+      const supervisors = item.supervisors.filter(s => s.id !== supervisorId);
+      
+      let status = item.status;
+      if (supervisors.length >= 2) {
+        status = 'approved';
+      } else {
+        if (item.status !== 'completed') {
+          status = 'pending';
+        }
+      }
+      
+      const response = await fetch(`${SHEET_API_URL}/id/${supervisionId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: status,
+          supervisors: JSON.stringify(supervisors)
+        })
+      });
+      return response.ok;
+    }
+    return false;
+  } catch (e) {
+    console.error("Error removing supervisor in Google Sheets:", e);
+    return false;
+  }
+};
+
+// 8. Submit post teaching record report
+export const submitPostTeachingRecord = async (supervisionId, record) => {
+  try {
+    const fullRecord = {
       ...record,
       submittedAt: new Date().toISOString()
     };
-    saveSupervisions(supervisions);
-    return true;
+    
+    const response = await fetch(`${SHEET_API_URL}/id/${supervisionId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        status: 'completed',
+        postTeachingRecord: JSON.stringify(fullRecord)
+      })
+    });
+    return response.ok;
+  } catch (e) {
+    console.error("Error submitting report to Google Sheets:", e);
+    return false;
   }
-  return false;
 };

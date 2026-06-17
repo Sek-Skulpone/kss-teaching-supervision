@@ -41,22 +41,44 @@ export default function App() {
   const [teachers, setTeachers] = useState([]);
   const [activeMainTab, setActiveMainTab] = useState('calendar');
   const [selectedEvent, setSelectedEvent] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
 
   // Initialize DB and load session on mount
   useEffect(() => {
     initializeDB();
-    setSupervisions(getSupervisions());
     setTeachers(getUsers());
 
     const savedUser = localStorage.getItem('ks_current_user');
     if (savedUser) {
       setCurrentUser(JSON.parse(savedUser));
     }
+
+    const loadData = async () => {
+      setIsLoading(true);
+      try {
+        const data = await getSupervisions();
+        setSupervisions(data);
+      } catch (e) {
+        console.error("Error loading supervisions on mount:", e);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    loadData();
   }, []);
 
-  // Sync state changes back to LocalStorage
-  const refreshSupervisionData = () => {
-    setSupervisions(getSupervisions());
+  // Sync state changes back to Google Sheets
+  const refreshSupervisionData = async () => {
+    setIsLoading(true);
+    try {
+      const data = await getSupervisions();
+      setSupervisions(data);
+      return data;
+    } catch (e) {
+      console.error("Error refreshing supervisions:", e);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // Login Handler
@@ -91,66 +113,110 @@ export default function App() {
   };
 
   // CRUD Wrapper Handlers
-  const handleAddSupervision = (data) => {
-    addSupervision(data);
-    refreshSupervisionData();
-  };
-
-  const handleVolunteer = (supervisionId) => {
-    const success = volunteerToSupervise(supervisionId, currentUser.id, currentUser.name);
-    if (success) {
-      refreshSupervisionData();
-      alert('ส่งคำขอเสนอความจำนงเป็นผู้นิเทศการสอนเรียบร้อยแล้ว อยู่ระหว่างฝ่ายวิชาการพิจารณาแต่งตั้งอย่างเป็นทางการ');
+  const handleAddSupervision = async (data) => {
+    setIsLoading(true);
+    try {
+      await addSupervision(data);
+      await refreshSupervisionData();
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleApproveVolunteer = (supervisionId) => {
-    approveVolunteer(supervisionId);
-    refreshSupervisionData();
-    // Update selected event in modal if currently open
-    if (selectedEvent && selectedEvent.id === supervisionId) {
-      const updated = getSupervisions().find(s => s.id === supervisionId);
-      setSelectedEvent(updated);
+  const handleVolunteer = async (supervisionId) => {
+    setIsLoading(true);
+    try {
+      const success = await volunteerToSupervise(supervisionId, currentUser.id, currentUser.name);
+      if (success) {
+        await refreshSupervisionData();
+        alert('ส่งคำขอเสนอความจำนงเป็นผู้นิเทศการสอนเรียบร้อยแล้ว อยู่ระหว่างฝ่ายวิชาการพิจารณาแต่งตั้งอย่างเป็นทางการ');
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleRejectVolunteer = (supervisionId) => {
-    rejectVolunteer(supervisionId);
-    refreshSupervisionData();
-    // Update selected event in modal if currently open
-    if (selectedEvent && selectedEvent.id === supervisionId) {
-      const updated = getSupervisions().find(s => s.id === supervisionId);
-      setSelectedEvent(updated);
+  const handleApproveVolunteer = async (supervisionId) => {
+    setIsLoading(true);
+    try {
+      await approveVolunteer(supervisionId);
+      const freshData = await refreshSupervisionData();
+      if (selectedEvent && selectedEvent.id === supervisionId && freshData) {
+        const updated = freshData.find(s => s.id === supervisionId);
+        setSelectedEvent(updated);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleAssignSupervisor = (supervisionId, supervisorId, supervisorName) => {
-    assignSupervisor(supervisionId, supervisorId, supervisorName);
-    refreshSupervisionData();
-    // Update selected event in modal if currently open
-    if (selectedEvent && selectedEvent.id === supervisionId) {
-      const updated = getSupervisions().find(s => s.id === supervisionId);
-      setSelectedEvent(updated);
+  const handleRejectVolunteer = async (supervisionId) => {
+    setIsLoading(true);
+    try {
+      await rejectVolunteer(supervisionId);
+      const freshData = await refreshSupervisionData();
+      if (selectedEvent && selectedEvent.id === supervisionId && freshData) {
+        const updated = freshData.find(s => s.id === supervisionId);
+        setSelectedEvent(updated);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleRemoveSupervisor = (supervisionId, supervisorId) => {
-    removeSupervisor(supervisionId, supervisorId);
-    refreshSupervisionData();
-    // Update selected event in modal if currently open
-    if (selectedEvent && selectedEvent.id === supervisionId) {
-      const updated = getSupervisions().find(s => s.id === supervisionId);
-      setSelectedEvent(updated);
+  const handleAssignSupervisor = async (supervisionId, supervisorId, supervisorName) => {
+    setIsLoading(true);
+    try {
+      await assignSupervisor(supervisionId, supervisorId, supervisorName);
+      const freshData = await refreshSupervisionData();
+      if (selectedEvent && selectedEvent.id === supervisionId && freshData) {
+        const updated = freshData.find(s => s.id === supervisionId);
+        setSelectedEvent(updated);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleSubmitPostRecord = (supervisionId, record) => {
-    submitPostTeachingRecord(supervisionId, record);
-    refreshSupervisionData();
-    // Update selected event in modal if currently open
-    if (selectedEvent && selectedEvent.id === supervisionId) {
-      const updated = getSupervisions().find(s => s.id === supervisionId);
-      setSelectedEvent(updated);
+  const handleRemoveSupervisor = async (supervisionId, supervisorId) => {
+    setIsLoading(true);
+    try {
+      await removeSupervisor(supervisionId, supervisorId);
+      const freshData = await refreshSupervisionData();
+      if (selectedEvent && selectedEvent.id === supervisionId && freshData) {
+        const updated = freshData.find(s => s.id === supervisionId);
+        setSelectedEvent(updated);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSubmitPostRecord = async (supervisionId, record) => {
+    setIsLoading(true);
+    try {
+      await submitPostTeachingRecord(supervisionId, record);
+      const freshData = await refreshSupervisionData();
+      if (selectedEvent && selectedEvent.id === supervisionId && freshData) {
+        const updated = freshData.find(s => s.id === supervisionId);
+        setSelectedEvent(updated);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -229,6 +295,12 @@ export default function App() {
             </ul>
           </div>
         </div>
+        {isLoading && (
+          <div className="loading-overlay">
+            <div className="spinner"></div>
+            <div className="loading-text">กำลังดาวน์โหลดข้อมูลระบบนิเทศ...</div>
+          </div>
+        )}
       </div>
     );
   }
@@ -520,6 +592,13 @@ export default function App() {
         <p>© 2026 ระบบสารสนเทศเพื่อการนิเทศการเรียนการสอนออนไลน์ โรงเรียนโคกสีวิทยาสรรค์ จังหวัดขอนแก่น</p>
         <p style={{ marginTop: '0.25rem', opacity: 0.7 }}>กลุ่มงานบริหารวิชาการ โรงเรียนโคกสีวิทยาสรรค์ สำนักงานเขตพื้นที่การศึกษามัธยมศึกษาขอนแก่น</p>
       </footer>
+
+      {isLoading && (
+        <div className="loading-overlay">
+          <div className="spinner"></div>
+          <div className="loading-text">กำลังเชื่อมต่อและดึงข้อมูลจาก Google Sheets...</div>
+        </div>
+      )}
     </div>
   );
 }
