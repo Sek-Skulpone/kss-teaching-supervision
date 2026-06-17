@@ -492,9 +492,122 @@ export default function AdminDashboard({
                         <td style={{ fontWeight: 600 }}>{req.teacherName}</td>
                         <td>{req.subject}</td>
                         <td>ชั้น ม.{req.grade.replace('ม.', '')}/{req.room}</td>
-                        <td>{formatThaiDate(req.date)} (เวลา {req.time} น.)</td>
-                        <td style={{ fontWeight: 500, color: 'var(--primary-color)', fontSize: '13px' }}>
-                          {req.supervisors ? req.supervisors.map(s => s.name).join(', ') : 'ยังไม่แต่งตั้ง'}
+                        <td>
+                          {editingScheduleId === req.id ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', minWidth: '150px' }}>
+                              <div>
+                                <label style={{ fontSize: '10px', color: 'var(--text-medium)', display: 'block', marginBottom: '2px' }}>วันที่นิเทศ</label>
+                                <input 
+                                  type="date" 
+                                  value={schedDate}
+                                  onChange={(e) => setSchedDate(e.target.value)}
+                                  style={{ padding: '4px', fontSize: '12px', width: '100%', boxSizing: 'border-box' }}
+                                />
+                              </div>
+                              <div>
+                                <label style={{ fontSize: '10px', color: 'var(--text-medium)', display: 'block', marginBottom: '2px' }}>คาบเวลาเรียน</label>
+                                <select
+                                  value={schedTime}
+                                  onChange={(e) => setSchedTime(e.target.value)}
+                                  style={{ padding: '4px', fontSize: '12px', width: '100%' }}
+                                >
+                                  <option value="">-- เลือกคาบเรียน --</option>
+                                  {PERIODS_LIST.map(p => <option key={p} value={p}>{p}</option>)}
+                                </select>
+                              </div>
+                              <div style={{ display: 'flex', gap: '0.25rem', marginTop: '0.25rem' }}>
+                                <button
+                                  className="btn btn-primary"
+                                  style={{ padding: '2px 6px', fontSize: '11px', flex: 1 }}
+                                  onClick={async () => {
+                                    if (!schedDate || !schedTime) {
+                                      alert('กรุณาระบุทั้งวันและคาบเวลา');
+                                      return;
+                                    }
+                                    const success = await onUpdateSupervision(req.id, { date: schedDate, time: schedTime });
+                                    if (success) {
+                                      alert('บันทึกวัน-เวลานิเทศเรียบร้อยแล้ว');
+                                      setEditingScheduleId(null);
+                                    } else {
+                                      alert('เกิดข้อผิดพลาดในการบันทึกข้อมูล');
+                                    }
+                                  }}
+                                >
+                                  บันทึก
+                                </button>
+                                <button
+                                  className="btn btn-outline"
+                                  style={{ padding: '2px 6px', fontSize: '11px' }}
+                                  onClick={() => setEditingScheduleId(null)}
+                                >
+                                  ยกเลิก
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
+                              <span>{formatThaiDate(req.date)} (เวลา {req.time.split(' ')[0] || req.time} น.)</span>
+                              <button
+                                className="btn btn-outline"
+                                style={{ padding: '2px 6px', fontSize: '11px', whiteSpace: 'nowrap' }}
+                                onClick={() => {
+                                  setEditingScheduleId(req.id);
+                                  setSchedDate(req.date || '');
+                                  setSchedTime(req.time || '');
+                                }}
+                              >
+                                แก้ไขเวลา
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                        <td>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', minWidth: '180px' }}>
+                            {req.supervisors && req.supervisors.length > 0 ? (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                                {req.supervisors.map(s => (
+                                  <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#f1f1f1', padding: '2px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 500 }}>
+                                    <span>{s.name}</span>
+                                    <button 
+                                      onClick={() => onRemoveSupervisor(req.id, s.id)}
+                                      style={{ border: 'none', background: 'none', color: '#e74c3c', cursor: 'pointer', padding: '0 4px', fontSize: '11px', fontWeight: 'bold' }}
+                                      title="ถอนการแต่งตั้ง"
+                                    >
+                                      ✖
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <span style={{ color: 'var(--text-light)', fontStyle: 'italic', fontSize: '12px' }}>ยังไม่ได้รับการแต่งตั้ง</span>
+                            )}
+
+                            {/* Dropdown to add more supervisors */}
+                            <div style={{ display: 'flex', gap: '0.25rem', marginTop: '0.25rem' }}>
+                              <select
+                                value={selectedTeacherId[req.id] || ''}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setSelectedTeacherId(prev => ({ ...prev, [req.id]: val }));
+                                }}
+                                style={{ padding: '2px 4px', fontSize: '12px', flex: 1 }}
+                              >
+                                <option value="">+ แต่งตั้งผู้นิเทศ</option>
+                                {teachers
+                                  .filter(t => t.id !== req.teacherId && (!req.supervisors || !req.supervisors.some(sup => sup.id === t.id)))
+                                  .map(t => (
+                                    <option key={t.id} value={t.id}>{t.name}</option>
+                                  ))}
+                              </select>
+                              <button
+                                className="btn btn-primary"
+                                style={{ padding: '2px 6px', fontSize: '11px' }}
+                                onClick={() => handleAssignClick(req.id)}
+                              >
+                                แต่งตั้ง
+                              </button>
+                            </div>
+                          </div>
                         </td>
                         <td>
                           <span className={`badge badge-${req.status}`}>
