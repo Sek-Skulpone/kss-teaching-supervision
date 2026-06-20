@@ -971,22 +971,6 @@ export default function TeacherDashboard({
                                       style={{ padding: '0.25rem 0.5rem', fontSize: '11px', whiteSpace: 'nowrap', marginTop: '0.25rem' }}
                                       onClick={() => {
                                         setSelectedEvalSupervision(req);
-                                        const myEval = req.evaluations?.[currentUser.id] || {};
-                                        setEvalPrep(myEval.ratings?.prep || 5);
-                                        setEvalAct(myEval.ratings?.act || 5);
-                                        setEvalPart(myEval.ratings?.part || 5);
-                                        setEvalMedia(myEval.ratings?.media || 5);
-                                        setEvalAssess(myEval.ratings?.assess || 5);
-                                        setEvalChar1(myEval.ratings?.char1 || 5);
-                                        setEvalChar2(myEval.ratings?.char2 || 5);
-                                        setEvalChar3(myEval.ratings?.char3 || 5);
-                                        setEvalChar4(myEval.ratings?.char4 || 5);
-                                        setEvalChar5(myEval.ratings?.char5 || 5);
-                                        setEvalChar6(myEval.ratings?.char6 || 5);
-                                        setEvalChar7(myEval.ratings?.char7 || 5);
-                                        setEvalChar8(myEval.ratings?.char8 || 5);
-                                        setEvalQualitative(myEval.qualitative || '');
-                                        setEvalSuggestions(myEval.suggestions || '');
                                       }}
                                     >
                                       📝 {req.evaluations?.[currentUser.id] ? 'แก้ไขการประเมิน' : 'กรอกการประเมินนิเทศ'}

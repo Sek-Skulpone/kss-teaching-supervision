@@ -723,7 +723,7 @@ export default function App() {
                 )}
 
                 {/* Evaluation Form & Report Summary Actions */}
-                {selectedEvent.supervisors && selectedEvent.supervisors.some(s => s.id === currentUser.id) && 
+                {((selectedEvent.supervisors && selectedEvent.supervisors.some(s => s.id === currentUser.id)) || currentUser.role === 'admin') && 
                  (selectedEvent.status === 'approved' || selectedEvent.status === 'completed') && 
                  (!selectedEvent.date || selectedEvent.date <= new Date().toISOString().split('T')[0]) && (
                   <div style={{ marginTop: '1rem', borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
@@ -744,7 +744,7 @@ export default function App() {
                 )}
 
                 {selectedEvent.evaluations && Object.keys(selectedEvent.evaluations).length > 0 && (
-                  <div style={{ marginTop: selectedEvent.supervisors && selectedEvent.supervisors.some(s => s.id === currentUser.id) ? '0.5rem' : '1rem', borderTop: selectedEvent.supervisors && selectedEvent.supervisors.some(s => s.id === currentUser.id) ? 'none' : '1px solid var(--border-color)', paddingTop: selectedEvent.supervisors && selectedEvent.supervisors.some(s => s.id === currentUser.id) ? '0' : '1rem' }}>
+                  <div style={{ marginTop: ((selectedEvent.supervisors && selectedEvent.supervisors.some(s => s.id === currentUser.id)) || currentUser.role === 'admin') ? '0.5rem' : '1rem', borderTop: ((selectedEvent.supervisors && selectedEvent.supervisors.some(s => s.id === currentUser.id)) || currentUser.role === 'admin') ? 'none' : '1px solid var(--border-color)', paddingTop: ((selectedEvent.supervisors && selectedEvent.supervisors.some(s => s.id === currentUser.id)) || currentUser.role === 'admin') ? '0' : '1rem' }}>
                     <button
                       className="btn btn-primary"
                       style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
