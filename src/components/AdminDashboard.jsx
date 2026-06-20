@@ -293,8 +293,13 @@ export default function AdminDashboard({
           let itemsCount = 0;
           if (ev.ratings) {
             Object.values(ev.ratings).forEach(val => {
-              sumRatings += val;
-              itemsCount++;
+              if (val && typeof val === 'object' && val.practice === 'มี') {
+                sumRatings += val.score || 0;
+                itemsCount++;
+              } else if (val && typeof val === 'number') {
+                sumRatings += val;
+                itemsCount++;
+              }
             });
           }
           if (itemsCount > 0) {
@@ -321,43 +326,33 @@ export default function AdminDashboard({
     const evals = Object.values(supervision.evaluations);
     const count = evals.length;
 
-    let sumPrep = 0, sumAct = 0, sumPart = 0, sumMedia = 0, sumAssess = 0;
-    let sumChars = Array(8).fill(0);
+    let overallSum = 0;
+    let overallCount = 0;
 
     evals.forEach(ev => {
-      sumPrep += ev.ratings?.prep || 0;
-      sumAct += ev.ratings?.act || 0;
-      sumPart += ev.ratings?.part || 0;
-      sumMedia += ev.ratings?.media || 0;
-      sumAssess += ev.ratings?.assess || 0;
-      for (let i = 0; i < 8; i++) {
-        sumChars[i] += ev.ratings?.[`char${i + 1}`] || 0;
+      let sumRatings = 0;
+      let itemsCount = 0;
+      if (ev.ratings) {
+        Object.values(ev.ratings).forEach(val => {
+          if (val && typeof val === 'object' && val.practice === 'มี') {
+            sumRatings += val.score || 0;
+            itemsCount++;
+          } else if (val && typeof val === 'number') {
+            sumRatings += val;
+            itemsCount++;
+          }
+        });
+      }
+      if (itemsCount > 0) {
+        overallSum += (sumRatings / itemsCount);
+        overallCount++;
       }
     });
 
-    const avgPrep = (sumPrep / count).toFixed(2);
-    const avgAct = (sumAct / count).toFixed(2);
-    const avgPart = (sumPart / count).toFixed(2);
-    const avgMedia = (sumMedia / count).toFixed(2);
-    const avgAssess = (sumAssess / count).toFixed(2);
-    const avgSection3 = ((Number(avgPrep) + Number(avgAct) + Number(avgPart) + Number(avgMedia) + Number(avgAssess)) / 5).toFixed(2);
-
-    const avgChars = sumChars.map(sum => (sum / count).toFixed(2));
-    const sumAllChars = avgChars.reduce((acc, val) => acc + Number(val), 0);
-    const avgSection4 = (sumAllChars / 8).toFixed(2);
-
-    const overallAvg = ((Number(avgSection3) + Number(avgSection4)) / 2).toFixed(2);
+    const overallAvg = overallCount > 0 ? (overallSum / overallCount).toFixed(2) : '-';
 
     return {
       count,
-      prep: avgPrep,
-      act: avgAct,
-      part: avgPart,
-      media: avgMedia,
-      assess: avgAssess,
-      section3: avgSection3,
-      chars: avgChars,
-      section4: avgSection4,
       overall: overallAvg,
       evalsList: evals
     };
