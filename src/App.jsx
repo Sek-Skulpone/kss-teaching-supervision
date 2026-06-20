@@ -11,13 +11,16 @@ import {
   Eye, 
   BookOpen, 
   Sparkles,
-  Info
+  Info,
+  FileText
 } from 'lucide-react';
 import Calendar from './components/Calendar';
 import TeacherDashboard from './components/TeacherDashboard';
 import AdminDashboard from './components/AdminDashboard';
 import TermPlanArchive from './components/TermPlanArchive';
 import logo from './assets/logo.png';
+import EvaluationModal from './components/EvaluationModal';
+import EvaluationSummaryModal from './components/EvaluationSummaryModal';
 import {
   getUsers,
   addTeacher,
@@ -54,6 +57,8 @@ export default function App() {
   const [settings, setSettings] = useState({ positions: [], departments: [] });
   const [activeMainTab, setActiveMainTab] = useState('calendar');
   const [selectedEvent, setSelectedEvent] = useState(null);
+  const [selectedEvalSupervision, setSelectedEvalSupervision] = useState(null);
+  const [selectedSummarySupervision, setSelectedSummarySupervision] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
 
   // Initialize and load session on mount
@@ -586,6 +591,7 @@ export default function App() {
         {activeMainTab === 'dashboard' && (
           currentUser.role === 'admin' ? (
             <AdminDashboard
+              currentUser={currentUser}
               supervisions={supervisions}
               teachers={teachers}
               onAssignSupervisor={handleAssignSupervisor}
@@ -716,6 +722,43 @@ export default function App() {
                   </div>
                 )}
 
+                {/* Evaluation Form & Report Summary Actions */}
+                {selectedEvent.supervisors && selectedEvent.supervisors.some(s => s.id === currentUser.id) && 
+                 (selectedEvent.status === 'approved' || selectedEvent.status === 'completed') && 
+                 (!selectedEvent.date || selectedEvent.date <= new Date().toISOString().split('T')[0]) && (
+                  <div style={{ marginTop: '1rem', borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
+                    <button
+                      className="btn btn-secondary"
+                      style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
+                      onClick={() => {
+                        setSelectedEvalSupervision(selectedEvent);
+                        setSelectedEvent(null);
+                      }}
+                    >
+                      <FileText size={18} />
+                      {selectedEvent.evaluations && selectedEvent.evaluations[currentUser.id]
+                        ? 'แก้ไขแบบประเมินนิเทศชั้นเรียน (PLC)'
+                        : 'กรอกแบบประเมินนิเทศชั้นเรียน (PLC)'}
+                    </button>
+                  </div>
+                )}
+
+                {selectedEvent.evaluations && Object.keys(selectedEvent.evaluations).length > 0 && (
+                  <div style={{ marginTop: selectedEvent.supervisors && selectedEvent.supervisors.some(s => s.id === currentUser.id) ? '0.5rem' : '1rem', borderTop: selectedEvent.supervisors && selectedEvent.supervisors.some(s => s.id === currentUser.id) ? 'none' : '1px solid var(--border-color)', paddingTop: selectedEvent.supervisors && selectedEvent.supervisors.some(s => s.id === currentUser.id) ? '0' : '1rem' }}>
+                    <button
+                      className="btn btn-primary"
+                      style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
+                      onClick={() => {
+                        setSelectedSummarySupervision(selectedEvent);
+                        setSelectedEvent(null);
+                      }}
+                    >
+                      <ClipboardList size={18} />
+                      ดูรายงานผลการประเมิน ({Object.keys(selectedEvent.evaluations).length} ฉบับ)
+                    </button>
+                  </div>
+                )}
+
                 {/* Context-aware Actions inside Modal */}
                 {/* A. If Teacher logs in & viewing other's pending supervision -> Can volunteer */}
                 {currentUser.role === 'teacher' && 
@@ -819,6 +862,32 @@ export default function App() {
         <p>© 2026 ระบบสารสนเทศเพื่อการนิเทศการเรียนการสอนออนไลน์ โรงเรียนโคกสีวิทยาสรรค์ จังหวัดสกลนคร</p>
         <p style={{ marginTop: '0.25rem', opacity: 0.7 }}>กลุ่มงานบริหารวิชาการ โรงเรียนโคกสีวิทยาสรรค์ สำนักงานเขตพื้นที่การศึกษามัธยมศึกษาสกลนคร</p>
       </footer>
+
+      {selectedEvalSupervision && (
+        <EvaluationModal
+          supervision={selectedEvalSupervision}
+          currentUser={currentUser}
+          onClose={() => setSelectedEvalSupervision(null)}
+          onSubmit={async (newEvaluations) => {
+            const success = await handleUpdateSupervision(selectedEvalSupervision.id, {
+              evaluations: newEvaluations
+            });
+            if (success) {
+              alert('บันทึกผลการประเมินนิเทศเรียบร้อยแล้ว!');
+              setSelectedEvalSupervision(null);
+            } else {
+              alert('เกิดข้อผิดพลาดในการบันทึกข้อมูล');
+            }
+          }}
+        />
+      )}
+
+      {selectedSummarySupervision && (
+        <EvaluationSummaryModal
+          supervision={selectedSummarySupervision}
+          onClose={() => setSelectedSummarySupervision(null)}
+        />
+      )}
 
       {isLoading && (
         <div className="loading-overlay">

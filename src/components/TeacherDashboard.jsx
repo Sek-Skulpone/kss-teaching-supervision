@@ -81,6 +81,27 @@ export default function TeacherDashboard({
   const [selectedTermPlan, setSelectedTermPlan] = useState(null);
   const [postLessonOutcome, setPostLessonOutcome] = useState('');
 
+  // D. Classroom Evaluation Form States
+  const [selectedEvalSupervision, setSelectedEvalSupervision] = useState(null);
+  const [evalPrep, setEvalPrep] = useState(5);
+  const [evalAct, setEvalAct] = useState(5);
+  const [evalPart, setEvalPart] = useState(5);
+  const [evalMedia, setEvalMedia] = useState(5);
+  const [evalAssess, setEvalAssess] = useState(5);
+  const [evalChar1, setEvalChar1] = useState(5);
+  const [evalChar2, setEvalChar2] = useState(5);
+  const [evalChar3, setEvalChar3] = useState(5);
+  const [evalChar4, setEvalChar4] = useState(5);
+  const [evalChar5, setEvalChar5] = useState(5);
+  const [evalChar6, setEvalChar6] = useState(5);
+  const [evalChar7, setEvalChar7] = useState(5);
+  const [evalChar8, setEvalChar8] = useState(5);
+  const [evalQualitative, setEvalQualitative] = useState('');
+  const [evalSuggestions, setEvalSuggestions] = useState('');
+
+  // E. Summary Report State
+  const [selectedReportSummary, setSelectedReportSummary] = useState(null);
+
   // Handle Supervision Request Submit
   const handleRequestSubmit = (e) => {
     e.preventDefault();
@@ -161,6 +182,49 @@ export default function TeacherDashboard({
     setProblems('');
     setSolutions('');
     alert('บันทึกหลังการสอนเสร็จสิ้นและปรับปรุงข้อมูลเรียบร้อย!');
+  };
+
+  // Handle Classroom Evaluation Submit
+  const handleEvalSubmit = async (e) => {
+    e.preventDefault();
+    if (!selectedEvalSupervision) return;
+
+    const newEvaluations = {
+      ...(selectedEvalSupervision.evaluations || {}),
+      [currentUser.id]: {
+        supervisorId: currentUser.id,
+        supervisorName: currentUser.name,
+        submittedAt: new Date().toISOString(),
+        ratings: {
+          prep: Number(evalPrep),
+          act: Number(evalAct),
+          part: Number(evalPart),
+          media: Number(evalMedia),
+          assess: Number(evalAssess),
+          char1: Number(evalChar1),
+          char2: Number(evalChar2),
+          char3: Number(evalChar3),
+          char4: Number(evalChar4),
+          char5: Number(evalChar5),
+          char6: Number(evalChar6),
+          char7: Number(evalChar7),
+          char8: Number(evalChar8)
+        },
+        qualitative: evalQualitative.trim(),
+        suggestions: evalSuggestions.trim()
+      }
+    };
+
+    const success = await onUpdateSupervision(selectedEvalSupervision.id, {
+      evaluations: newEvaluations
+    });
+
+    if (success) {
+      alert('บันทึกผลการประเมินนิเทศเรียบร้อยแล้ว!');
+      setSelectedEvalSupervision(null);
+    } else {
+      alert('เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง');
+    }
   };
 
   // Handle Term Plan Submit
@@ -250,7 +314,6 @@ export default function TeacherDashboard({
     s => (s.supervisors && s.supervisors.some(sup => sup.id === currentUser.id)) || s.volunteerId === currentUser.id
   );
 
-  // Format Date Helper
   const formatThaiDate = (dateStr) => {
     if (!dateStr) return '';
     const parts = dateStr.split('-');
@@ -260,6 +323,87 @@ export default function TeacherDashboard({
     const day = parseInt(parts[2]);
     const monthsShort = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
     return `${day} ${monthsShort[monthIndex]} ${yearTh}`;
+  };
+
+  const renderRatingRow = (label, value, onChange) => (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.4rem 0', borderBottom: '1px solid #f1f1f1', flexWrap: 'wrap', gap: '0.5rem' }}>
+      <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-dark)', maxWidth: '60%' }}>{label}</span>
+      <div style={{ display: 'flex', gap: '0.25rem' }}>
+        {[1, 2, 3, 4, 5].map(num => (
+          <button
+            key={num}
+            type="button"
+            onClick={() => onChange(num)}
+            style={{
+              width: '28px',
+              height: '28px',
+              borderRadius: '50%',
+              border: '1px solid var(--border-color)',
+              backgroundColor: value === num ? 'var(--primary-color)' : 'white',
+              color: value === num ? 'white' : 'var(--text-dark)',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontWeight: 'bold',
+              fontSize: '12px',
+              transition: 'all 0.15s'
+            }}
+          >
+            {num}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
+  const getAverageEvalData = (supervision) => {
+    if (!supervision || !supervision.evaluations || Object.keys(supervision.evaluations).length === 0) {
+      return null;
+    }
+    const evals = Object.values(supervision.evaluations);
+    const count = evals.length;
+
+    let sumPrep = 0, sumAct = 0, sumPart = 0, sumMedia = 0, sumAssess = 0;
+    let sumChars = Array(8).fill(0);
+
+    evals.forEach(ev => {
+      sumPrep += ev.ratings?.prep || 0;
+      sumAct += ev.ratings?.act || 0;
+      sumPart += ev.ratings?.part || 0;
+      sumMedia += ev.ratings?.media || 0;
+      sumAssess += ev.ratings?.assess || 0;
+      for (let i = 0; i < 8; i++) {
+        sumChars[i] += ev.ratings?.[`char${i + 1}`] || 0;
+      }
+    });
+
+    const avgPrep = (sumPrep / count).toFixed(2);
+    const avgAct = (sumAct / count).toFixed(2);
+    const avgPart = (sumPart / count).toFixed(2);
+    const avgMedia = (sumMedia / count).toFixed(2);
+    const avgAssess = (sumAssess / count).toFixed(2);
+    const avgSection3 = ((Number(avgPrep) + Number(avgAct) + Number(avgPart) + Number(avgMedia) + Number(avgAssess)) / 5).toFixed(2);
+
+    const avgChars = sumChars.map(sum => (sum / count).toFixed(2));
+    const sumAllChars = avgChars.reduce((acc, val) => acc + Number(val), 0);
+    const avgSection4 = (sumAllChars / 8).toFixed(2);
+
+    const overallAvg = ((Number(avgSection3) + Number(avgSection4)) / 2).toFixed(2);
+
+    return {
+      count,
+      prep: avgPrep,
+      act: avgAct,
+      part: avgPart,
+      media: avgMedia,
+      assess: avgAssess,
+      section3: avgSection3,
+      chars: avgChars,
+      section4: avgSection4,
+      overall: overallAvg,
+      evalsList: evals
+    };
   };
 
   return (
@@ -680,6 +824,18 @@ export default function TeacherDashboard({
                         {req.status === 'pending_approval' && (
                           <span style={{ fontSize: '12px', color: 'var(--text-light)', fontStyle: 'italic' }}>รอแต่งตั้งเสร็จสิ้น</span>
                         )}
+                        {req.evaluations && Object.keys(req.evaluations).length > 0 && (
+                          <button
+                            type="button"
+                            className="btn btn-outline"
+                            style={{ padding: '0.3rem 0.6rem', fontSize: '12px', whiteSpace: 'nowrap', marginTop: '0.35rem', display: 'block', borderColor: 'var(--primary-color)', color: 'var(--primary-color)' }}
+                            onClick={() => {
+                              setSelectedReportSummary(req);
+                            }}
+                          >
+                            📊 ดูผลประเมิน ({Object.keys(req.evaluations).length} ท่าน)
+                          </button>
+                        )}
                       </td>
                       <td style={{ textAlign: 'center' }}>
                         <div style={{ display: 'flex', gap: '0.25rem', justifyContent: 'center' }}>
@@ -935,15 +1091,47 @@ export default function TeacherDashboard({
                             </a>
                           </td>
                           <td>
-                            {isApproved ? (
-                              <span className="badge badge-approved" style={{ padding: '0.4rem 0.8rem' }}>
-                                <CheckCircle2 size={12} /> ได้รับการแต่งตั้งเป็นผู้นิเทศแล้ว
-                              </span>
-                            ) : (
-                              <span className="badge badge-volunteered" style={{ padding: '0.4rem 0.8rem' }}>
-                                <Clock size={12} /> อยู่ระหว่างฝ่ายวิชาการพิจารณาแต่งตั้ง
-                              </span>
-                            )}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', alignItems: 'center' }}>
+                              {isApproved ? (
+                                <>
+                                  <span className="badge badge-approved" style={{ padding: '0.4rem 0.8rem', display: 'inline-flex', gap: '0.25rem', alignItems: 'center' }}>
+                                    <CheckCircle2 size={12} /> ได้รับการแต่งตั้งเป็นผู้นิเทศแล้ว
+                                  </span>
+                                  {req.date && (
+                                    <button
+                                      type="button"
+                                      className="btn btn-secondary"
+                                      style={{ padding: '0.25rem 0.5rem', fontSize: '11px', whiteSpace: 'nowrap', marginTop: '0.25rem' }}
+                                      onClick={() => {
+                                        setSelectedEvalSupervision(req);
+                                        const myEval = req.evaluations?.[currentUser.id] || {};
+                                        setEvalPrep(myEval.ratings?.prep || 5);
+                                        setEvalAct(myEval.ratings?.act || 5);
+                                        setEvalPart(myEval.ratings?.part || 5);
+                                        setEvalMedia(myEval.ratings?.media || 5);
+                                        setEvalAssess(myEval.ratings?.assess || 5);
+                                        setEvalChar1(myEval.ratings?.char1 || 5);
+                                        setEvalChar2(myEval.ratings?.char2 || 5);
+                                        setEvalChar3(myEval.ratings?.char3 || 5);
+                                        setEvalChar4(myEval.ratings?.char4 || 5);
+                                        setEvalChar5(myEval.ratings?.char5 || 5);
+                                        setEvalChar6(myEval.ratings?.char6 || 5);
+                                        setEvalChar7(myEval.ratings?.char7 || 5);
+                                        setEvalChar8(myEval.ratings?.char8 || 5);
+                                        setEvalQualitative(myEval.qualitative || '');
+                                        setEvalSuggestions(myEval.suggestions || '');
+                                      }}
+                                    >
+                                      📝 {req.evaluations?.[currentUser.id] ? 'แก้ไขการประเมิน' : 'กรอกการประเมินนิเทศ'}
+                                    </button>
+                                  )}
+                                </>
+                              ) : (
+                                <span className="badge badge-volunteered" style={{ padding: '0.4rem 0.8rem', display: 'inline-flex', gap: '0.25rem', alignItems: 'center' }}>
+                                  <Clock size={12} /> อยู่ระหว่างฝ่ายวิชาการพิจารณาแต่งตั้ง
+                                </span>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       );
@@ -955,6 +1143,243 @@ export default function TeacherDashboard({
           </div>
         </div>
       )}
+
+      {/* Modal Classroom Observation Evaluation Form */}
+      {selectedEvalSupervision && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: '650px' }}>
+            <div className="modal-header">
+              <h3>แบบบันทึกการประเมินการสังเกตชั้นเรียน (PLC)</h3>
+              <button type="button" className="modal-close-btn" onClick={() => setSelectedEvalSupervision(null)}>×</button>
+            </div>
+            <form onSubmit={handleEvalSubmit}>
+              <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                <div style={{ backgroundColor: '#f8f9fa', padding: '0.8rem', borderRadius: 'var(--radius-sm)', fontSize: '13px', borderLeft: '4px solid var(--primary-color)' }}>
+                  <div><strong>ครูผู้สอน:</strong> {selectedEvalSupervision.teacherName}</div>
+                  <div><strong>รายวิชา:</strong> {selectedEvalSupervision.subject} (ชั้น ม.{selectedEvalSupervision.grade.replace('ม.', '')}/{selectedEvalSupervision.room})</div>
+                  <div><strong>วัน-เวลาคาบนิเทศ:</strong> {formatThaiDate(selectedEvalSupervision.date)} เวลา {selectedEvalSupervision.time}</div>
+                  <div><strong>ผู้นิเทศ (คุณ):</strong> {currentUser.name}</div>
+                </div>
+
+                <div>
+                  <h4 style={{ fontWeight: 700, fontSize: '14px', color: 'var(--primary-color)', marginBottom: '0.25rem' }}>1. จุดประสงค์การสังเกตชั้นเรียน</h4>
+                  <p style={{ fontSize: '13px', color: 'var(--text-medium)', backgroundColor: '#f0f9ff', padding: '0.6rem 0.8rem', borderRadius: '4px', border: '1px solid #d0e8f8' }}>
+                    เพื่อเก็บข้อมูลการจัดการเรียนรู้ที่เน้นผู้เรียนเป็นสำคัญ โดยเน้นการจัดกิจกรรมการเรียนรู้เชิงรุก (Active Learning) เพื่อส่งเสริมการเรียนรู้ของผู้เรียนให้เกิดประสิทธิภาพสูงสุด
+                  </p>
+                </div>
+
+                <div>
+                  <h4 style={{ fontWeight: 700, fontSize: '14px', color: 'var(--primary-color)', marginBottom: '0.5rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.25rem' }}>
+                    2. รายการประเด็นสังเกต (คะแนน 1 - 5)
+                  </h4>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    {renderRatingRow('3.1 การเตรียมการสอน (การวางแผนและจัดเตรียมความพร้อม)', evalPrep, setEvalPrep)}
+                    {renderRatingRow('3.2 กิจกรรมการเรียนรู้ (กระบวนการจัดการเรียนรู้เชิงรุก)', evalAct, setEvalAct)}
+                    {renderRatingRow('3.3 การมีส่วนร่วมของนักเรียน (ความสนใจและการมีปฏิสัมพันธ์)', evalPart, setEvalPart)}
+                    {renderRatingRow('3.4 การใช้สื่อและเทคโนโลยี (ความเหมาะสมและช่วยการเรียนรู้)', evalMedia, setEvalMedia)}
+                    {renderRatingRow('3.5 การวัดและประเมินผล (สอดคล้องกับวัตถุประสงค์และมีความหลากหลาย)', evalAssess, setEvalAssess)}
+                  </div>
+                </div>
+
+                <div>
+                  <h4 style={{ fontWeight: 700, fontSize: '14px', color: 'var(--primary-color)', marginBottom: '0.5rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.25rem' }}>
+                    3. คุณลักษณะของผู้เรียนตามที่สังเกต (คะแนน 1 - 5)
+                  </h4>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    {renderRatingRow('(1) ผู้เรียนสามารถเข้าถึงสิ่งที่เรียนและเข้าใจบทเรียน', evalChar1, setEvalChar1)}
+                    {renderRatingRow('(2) ผู้เรียนสามารถเชื่อมโยงความรู้หรือประสบการณ์เดิมกับการเรียนรู้ใหม่', evalChar2, setEvalChar2)}
+                    {renderRatingRow('(3) ผู้เรียนได้สร้างความรู้เองหรือได้สร้างประสบการณ์ใหม่จากการเรียนรู้', evalChar3, setEvalChar3)}
+                    {renderRatingRow('(4) ผู้เรียนได้รับการกระตุ้นและเกิดแรงจูงใจในการเรียนรู้', evalChar4, setEvalChar4)}
+                    {renderRatingRow('(5) ผู้เรียนได้รับการพัฒนาทักษะความเชี่ยวชาญจากการเรียนรู้', evalChar5, setEvalChar5)}
+                    {renderRatingRow('(6) ผู้เรียนได้รับข้อมูลสะท้อนกลับเพื่อปรับปรุงการเรียนรู้', evalChar6, setEvalChar6)}
+                    {renderRatingRow('(7) ผู้เรียนได้รับการพัฒนาการเรียนรู้ในบรรยากาศชั้นเรียนที่เหมาะสม', evalChar7, setEvalChar7)}
+                    {renderRatingRow('(8) ผู้เรียนสามารถกำกับการเรียนรู้และมีการเรียนรู้แบบนำตนเอง', evalChar8, setEvalChar8)}
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label>4. ข้อสังเกตเชิงคุณภาพ (จุดเด่น หรือสิ่งสังเกตที่พบในกระบวนการจัดกิจกรรม)</label>
+                  <textarea
+                    rows="3"
+                    value={evalQualitative}
+                    onChange={(e) => setEvalQualitative(e.target.value)}
+                    placeholder="ระบุพฤติกรรมผู้เรียน การจัดการเรียนรู้ของครู จุดเด่นการสอนที่เห็นเด่นชัด..."
+                    required
+                  ></textarea>
+                </div>
+
+                <div className="form-group">
+                  <label>5. สรุปและข้อเสนอแนะ (แนวทางการพัฒนาปรับปรุงเพิ่มเติม)</label>
+                  <textarea
+                    rows="3"
+                    value={evalSuggestions}
+                    onChange={(e) => setEvalSuggestions(e.target.value)}
+                    placeholder="เสนอแนะแนวทางในการพัฒนาต่อยอด ปรับปรุงแผนการสอน หรือการจัดการเรียนรู้..."
+                    required
+                  ></textarea>
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-outline" onClick={() => setSelectedEvalSupervision(null)}>ยกเลิก</button>
+                <button type="submit" className="btn btn-primary">บันทึกผลการประเมิน</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal View Detailed Evaluation Summary Report */}
+      {selectedReportSummary && (() => {
+        const avgData = getAverageEvalData(selectedReportSummary);
+        return (
+          <div className="modal-overlay">
+            <div className="modal-content" style={{ maxWidth: '700px' }}>
+              <div className="modal-header">
+                <h3>รายงานสรุปผลการนิเทศการจัดการเรียนรู้รายบุคคล</h3>
+                <button type="button" className="modal-close-btn" onClick={() => setSelectedReportSummary(null)}>×</button>
+              </div>
+              <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                
+                {/* General Info */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', backgroundColor: '#f8f9fa', padding: '0.8rem', borderRadius: 'var(--radius-sm)', fontSize: '13px', borderLeft: '4px solid var(--primary-color)' }}>
+                  <div><strong>ครูผู้สอน:</strong> {selectedReportSummary.teacherName}</div>
+                  <div><strong>รายวิชา:</strong> {selectedReportSummary.subject} (ชั้น ม.{selectedReportSummary.grade.replace('ม.', '')}/{selectedReportSummary.room})</div>
+                  <div><strong>วัน-เวลาที่นิเทศ:</strong> {formatThaiDate(selectedReportSummary.date)} เวลา {selectedReportSummary.time}</div>
+                  <div><strong>คณะกรรมการนิเทศ:</strong> {selectedReportSummary.supervisors ? selectedReportSummary.supervisors.map(s => s.name).join(', ') : 'ยังไม่แต่งตั้ง'}</div>
+                </div>
+
+                {!avgData ? (
+                  <div style={{ textAlign: 'center', padding: '2rem', border: '1px dashed var(--border-color)', borderRadius: '4px', color: 'var(--text-light)' }}>
+                    ยังไม่มีผู้นิเทศกรอกข้อมูลการประเมินในระบบ
+                  </div>
+                ) : (
+                  <>
+                    {/* Overall Summary Score Card */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '140px 1fr', gap: '1rem', alignItems: 'center', backgroundColor: '#f0fdf4', padding: '1rem', borderRadius: 'var(--radius-md)', border: '1px solid #b2f5ea' }}>
+                      <div style={{ textAlign: 'center' }}>
+                        <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--status-approved)' }}>คะแนนเฉลี่ยรวม</div>
+                        <div style={{ fontSize: '2.5rem', fontWeight: 800, color: 'var(--primary-color)', lineHeight: 1.1 }}>{avgData.overall}</div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-medium)' }}>เต็ม 5.00 คะแนน</div>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', fontSize: '13px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span><strong>1. ด้านการจัดกระบวนการเรียนรู้ (3.1-3.5):</strong></span>
+                          <span style={{ fontWeight: 700, color: 'var(--primary-color)' }}>{avgData.section3} / 5.00</span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span><strong>2. ด้านคุณลักษณะของผู้เรียน (1-8):</strong></span>
+                          <span style={{ fontWeight: 700, color: 'var(--primary-color)' }}>{avgData.section4} / 5.00</span>
+                        </div>
+                        <div style={{ fontSize: '12px', color: 'var(--text-medium)', borderTop: '1px solid #d4f2e6', paddingTop: '0.4rem', marginTop: '0.2rem' }}>
+                          * คำนวณเฉลี่ยรวมจากแบบประเมินจำนวน {avgData.count} ฉบับ
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Detailed Scores Breakdown */}
+                    <div>
+                      <h4 style={{ fontWeight: 700, fontSize: '14px', color: 'var(--primary-color)', marginBottom: '0.5rem' }}>คะแนนเฉลี่ยรายประเด็น</h4>
+                      <div style={{ border: '1px solid var(--border-color)', borderRadius: '4px', overflow: 'hidden' }}>
+                        <table style={{ margin: 0, width: '100%' }}>
+                          <thead style={{ backgroundColor: '#f8f9fa' }}>
+                            <tr>
+                              <th style={{ padding: '0.5rem', fontSize: '12px' }}>ประเด็นประเมินการสังเกตชั้นเรียน</th>
+                              <th style={{ padding: '0.5rem', fontSize: '12px', textAlign: 'center', width: '90px' }}>คะแนนเฉลี่ย</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr>
+                              <td style={{ padding: '0.5rem', fontSize: '13px', fontWeight: 600 }} colSpan={2}>ส่วนที่ 1: การสังเกตกิจกรรมกระบวนการเรียนรู้</td>
+                            </tr>
+                            <tr>
+                              <td style={{ padding: '0.4rem 0.8rem', fontSize: '12px' }}>3.1 การเตรียมการสอน (การวางแผนและจัดเตรียมความพร้อม)</td>
+                              <td style={{ padding: '0.4rem', fontSize: '13px', fontWeight: 700, textAlign: 'center', color: 'var(--primary-color)' }}>{avgData.prep}</td>
+                            </tr>
+                            <tr>
+                              <td style={{ padding: '0.4rem 0.8rem', fontSize: '12px' }}>3.2 กิจกรรมการเรียนรู้ (กระบวนการจัดการเรียนรู้เชิงรุก)</td>
+                              <td style={{ padding: '0.4rem', fontSize: '13px', fontWeight: 700, textAlign: 'center', color: 'var(--primary-color)' }}>{avgData.act}</td>
+                            </tr>
+                            <tr>
+                              <td style={{ padding: '0.4rem 0.8rem', fontSize: '12px' }}>3.3 การมีส่วนร่วมของนักเรียน (ความสนใจและการมีปฏิสัมพันธ์)</td>
+                              <td style={{ padding: '0.4rem', fontSize: '13px', fontWeight: 700, textAlign: 'center', color: 'var(--primary-color)' }}>{avgData.part}</td>
+                            </tr>
+                            <tr>
+                              <td style={{ padding: '0.4rem 0.8rem', fontSize: '12px' }}>3.4 การใช้สื่อและเทคโนโลยี (ความเหมาะสมและช่วยการเรียนรู้)</td>
+                              <td style={{ padding: '0.4rem', fontSize: '13px', fontWeight: 700, textAlign: 'center', color: 'var(--primary-color)' }}>{avgData.media}</td>
+                            </tr>
+                            <tr>
+                              <td style={{ padding: '0.4rem 0.8rem', fontSize: '12px' }}>3.5 การวัดและประเมินผล (สอดคล้องกับวัตถุประสงค์และมีความหลากหลาย)</td>
+                              <td style={{ padding: '0.4rem', fontSize: '13px', fontWeight: 700, textAlign: 'center', color: 'var(--primary-color)' }}>{avgData.assess}</td>
+                            </tr>
+
+                            <tr>
+                              <td style={{ padding: '0.5rem', fontSize: '13px', fontWeight: 600 }} colSpan={2}>ส่วนที่ 2: คุณลักษณะของผู้เรียนที่เกิดขึ้นจริง</td>
+                            </tr>
+                            {[
+                              '(1) ผู้เรียนสามารถเข้าถึงสิ่งที่เรียนและเข้าใจบทเรียน',
+                              '(2) ผู้เรียนสามารถเชื่อมโยงความรู้หรือประสบการณ์เดิมกับการเรียนรู้ใหม่',
+                              '(3) ผู้เรียนได้สร้างความรู้เองหรือได้สร้างประสบการณ์ใหม่จากการเรียนรู้',
+                              '(4) ผู้เรียนได้รับการกระตุ้นและเกิดแรงจูงใจในการเรียนรู้',
+                              '(5) ผู้เรียนได้รับการพัฒนาทักษะความเชี่ยวชาญจากการเรียนรู้',
+                              '(6) ผู้เรียนได้รับข้อมูลสะท้อนกลับเพื่อปรับปรุงการเรียนรู้',
+                              '(7) ผู้เรียนได้รับการพัฒนาการเรียนรู้ในบรรยากาศชั้นเรียนที่เหมาะสม',
+                              '(8) ผู้เรียนสามารถกำกับการเรียนรู้และมีการเรียนรู้แบบนำตนเอง'
+                            ].map((label, idx) => (
+                              <tr key={idx}>
+                                <td style={{ padding: '0.4rem 0.8rem', fontSize: '12px' }}>{label}</td>
+                                <td style={{ padding: '0.4rem', fontSize: '13px', fontWeight: 700, textAlign: 'center', color: 'var(--primary-color)' }}>{avgData.chars[idx]}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {/* Qualitative Comments & Suggestions */}
+                    <div>
+                      <h4 style={{ fontWeight: 700, fontSize: '14px', color: 'var(--primary-color)', marginBottom: '0.5rem' }}>ข้อเสนอแนะและข้อสังเกตจากคณะกรรมการนิเทศ</h4>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                        {avgData.evalsList.map((ev) => (
+                          <div key={ev.supervisorId} style={{ backgroundColor: '#fafafa', border: '1px solid #eee', padding: '0.75rem', borderRadius: '4px', fontSize: '13px' }}>
+                            <div style={{ fontWeight: 700, color: 'var(--primary-color)', borderBottom: '1px dashed #e2e8f0', paddingBottom: '0.25rem', marginBottom: '0.4rem' }}>
+                              ✍️ ผู้นิเทศ: {ev.supervisorName}
+                            </div>
+                            <div style={{ marginBottom: '0.4rem' }}>
+                              <strong>ข้อสังเกตเชิงคุณภาพ:</strong>
+                              <div style={{ color: 'var(--text-dark)', marginTop: '0.1rem', whiteSpace: 'pre-wrap' }}>{ev.qualitative || '- ไม่มีระบุ -'}</div>
+                            </div>
+                            <div>
+                              <strong>ข้อเสนอแนะและสรุป:</strong>
+                              <div style={{ color: 'var(--text-dark)', marginTop: '0.1rem', whiteSpace: 'pre-wrap' }}>{ev.suggestions || '- ไม่มีระบุ -'}</div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* Self Reflection Section */}
+                {selectedReportSummary.status === 'completed' && selectedReportSummary.postTeachingRecord && (
+                  <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1rem', marginTop: '0.5rem' }}>
+                    <h4 style={{ fontWeight: 700, color: 'var(--status-completed)', fontSize: '14px', marginBottom: '0.5rem' }}>
+                      บันทึกหลังสอนตนเองของคุณครู (Self-Reflection)
+                    </h4>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', fontSize: '13px', backgroundColor: '#f0f9ff', padding: '0.8rem', borderRadius: 'var(--radius-sm)', border: '1px solid #d0e8f8' }}>
+                      <div><strong>1. ผลการจัดการเรียนรู้:</strong> <div style={{ color: 'var(--text-dark)', marginTop: '0.1rem', whiteSpace: 'pre-wrap' }}>{selectedReportSummary.postTeachingRecord.studentOutcome}</div></div>
+                      <div><strong>2. ปัญหาและอุปสรรค:</strong> <div style={{ color: 'var(--text-dark)', marginTop: '0.1rem', whiteSpace: 'pre-wrap' }}>{selectedReportSummary.postTeachingRecord.problems}</div></div>
+                      <div><strong>3. แนวทางแก้ไขและพัฒนา:</strong> <div style={{ color: 'var(--text-dark)', marginTop: '0.1rem', whiteSpace: 'pre-wrap' }}>{selectedReportSummary.postTeachingRecord.solutions}</div></div>
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-primary" onClick={() => setSelectedReportSummary(null)}>ปิดหน้าต่าง</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { AlertCircle, CheckCircle2, UserCheck, Eye, ClipboardList, Trash2, Calendar as CalendarIcon, Users, UserPlus, Shield } from 'lucide-react';
+import EvaluationModal from './EvaluationModal';
+import EvaluationSummaryModal from './EvaluationSummaryModal';
 
 const PERIODS_LIST = [
   'คาบที่ 1 (08.30 - 09.20 น.)',
@@ -12,6 +14,7 @@ const PERIODS_LIST = [
 ];
 
 export default function AdminDashboard({
+  currentUser,
   supervisions,
   teachers,
   onAssignSupervisor,
@@ -27,6 +30,9 @@ export default function AdminDashboard({
   const [activeSubTab, setActiveSubTab] = useState('supervisions');
   const [selectedTeacherId, setSelectedTeacherId] = useState({});
   const [selectedReport, setSelectedReport] = useState(null);
+  const [selectedSummaryTeacher, setSelectedSummaryTeacher] = useState(null);
+  const [selectedSummarySupervision, setSelectedSummarySupervision] = useState(null);
+  const [selectedEvalSupervision, setSelectedEvalSupervision] = useState(null);
 
   // States for scheduling date/time
   const [editingScheduleId, setEditingScheduleId] = useState(null);
@@ -273,6 +279,90 @@ export default function AdminDashboard({
     document.body.removeChild(link);
   };
 
+  const getTeacherOverallStats = (teacherId) => {
+    const teacherSups = supervisions.filter(s => s.teacherId === teacherId);
+    let totalScoreSum = 0;
+    let evalCount = 0;
+    let supervisionsCount = teacherSups.length;
+
+    teacherSups.forEach(s => {
+      if (s.evaluations && Object.keys(s.evaluations).length > 0) {
+        const evs = Object.values(s.evaluations);
+        evs.forEach(ev => {
+          let sumRatings = 0;
+          let itemsCount = 0;
+          if (ev.ratings) {
+            Object.values(ev.ratings).forEach(val => {
+              sumRatings += val;
+              itemsCount++;
+            });
+          }
+          if (itemsCount > 0) {
+            totalScoreSum += (sumRatings / itemsCount);
+            evalCount++;
+          }
+        });
+      }
+    });
+
+    const averageScore = evalCount > 0 ? (totalScoreSum / evalCount).toFixed(2) : '-';
+
+    return {
+      supervisionsCount,
+      evalCount,
+      averageScore
+    };
+  };
+
+  const getAverageEvalData = (supervision) => {
+    if (!supervision || !supervision.evaluations || Object.keys(supervision.evaluations).length === 0) {
+      return null;
+    }
+    const evals = Object.values(supervision.evaluations);
+    const count = evals.length;
+
+    let sumPrep = 0, sumAct = 0, sumPart = 0, sumMedia = 0, sumAssess = 0;
+    let sumChars = Array(8).fill(0);
+
+    evals.forEach(ev => {
+      sumPrep += ev.ratings?.prep || 0;
+      sumAct += ev.ratings?.act || 0;
+      sumPart += ev.ratings?.part || 0;
+      sumMedia += ev.ratings?.media || 0;
+      sumAssess += ev.ratings?.assess || 0;
+      for (let i = 0; i < 8; i++) {
+        sumChars[i] += ev.ratings?.[`char${i + 1}`] || 0;
+      }
+    });
+
+    const avgPrep = (sumPrep / count).toFixed(2);
+    const avgAct = (sumAct / count).toFixed(2);
+    const avgPart = (sumPart / count).toFixed(2);
+    const avgMedia = (sumMedia / count).toFixed(2);
+    const avgAssess = (sumAssess / count).toFixed(2);
+    const avgSection3 = ((Number(avgPrep) + Number(avgAct) + Number(avgPart) + Number(avgMedia) + Number(avgAssess)) / 5).toFixed(2);
+
+    const avgChars = sumChars.map(sum => (sum / count).toFixed(2));
+    const sumAllChars = avgChars.reduce((acc, val) => acc + Number(val), 0);
+    const avgSection4 = (sumAllChars / 8).toFixed(2);
+
+    const overallAvg = ((Number(avgSection3) + Number(avgSection4)) / 2).toFixed(2);
+
+    return {
+      count,
+      prep: avgPrep,
+      act: avgAct,
+      part: avgPart,
+      media: avgMedia,
+      assess: avgAssess,
+      section3: avgSection3,
+      chars: avgChars,
+      section4: avgSection4,
+      overall: overallAvg,
+      evalsList: evals
+    };
+  };
+
   return (
     <div>
       {/* Sub-navigation Tabs */}
@@ -293,6 +383,14 @@ export default function AdminDashboard({
           >
             <Users size={16} />
             จัดการข้อมูลบุคลากร
+          </button>
+          <button 
+            className={`btn ${activeSubTab === 'summary_reports' ? 'btn-primary' : 'btn-outline'}`}
+            onClick={() => setActiveSubTab('summary_reports')}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem' }}
+          >
+            <Shield size={16} />
+            รายงานสรุปผลการนิเทศ
           </button>
         </div>
 
@@ -760,6 +858,32 @@ export default function AdminDashboard({
                           ) : (
                             <span style={{ fontSize: '12px', color: 'var(--text-light)', fontStyle: 'italic' }}>รอคุณครูรายงานผล</span>
                           )}
+                          
+                          {req.supervisors && req.supervisors.some(sup => sup.id === currentUser.id) && req.date && (
+                            <button
+                              type="button"
+                              className="btn btn-secondary"
+                              style={{ padding: '0.25rem 0.5rem', fontSize: '11px', whiteSpace: 'nowrap', marginTop: '0.35rem', display: 'block', width: '100%' }}
+                              onClick={() => {
+                                setSelectedEvalSupervision(req);
+                              }}
+                            >
+                              📝 {req.evaluations?.[currentUser.id] ? 'แก้ไขการประเมิน' : 'กรอกการประเมิน'}
+                            </button>
+                          )}
+
+                          {req.evaluations && Object.keys(req.evaluations).length > 0 && (
+                            <button
+                              type="button"
+                              className="btn btn-outline"
+                              style={{ padding: '0.25rem 0.5rem', fontSize: '11px', whiteSpace: 'nowrap', marginTop: '0.35rem', display: 'block', width: '100%', borderColor: 'var(--primary-color)', color: 'var(--primary-color)' }}
+                              onClick={() => {
+                                setSelectedSummarySupervision(req);
+                              }}
+                            >
+                              📊 ดูผลประเมิน ({Object.keys(req.evaluations).length} ท่าน)
+                            </button>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -1044,6 +1168,171 @@ export default function AdminDashboard({
             </div>
           </div>
         </div>
+      )}
+      {activeSubTab === 'summary_reports' && (
+        <div className="card">
+          <h2 className="card-title">
+            <Shield />
+            รายงานผลการประเมินและการนิเทศการสอนรายบุคคล (PLC)
+          </h2>
+
+          {!selectedSummaryTeacher ? (
+            /* Part A: Show all teachers */
+            <div>
+              <p style={{ fontSize: '14px', color: 'var(--text-medium)', marginBottom: '1.25rem' }}>
+                ตารางสรุปผลสัมฤทธิ์และสถิติคลิกตรวจสอบข้อมูลการนิเทศเชิงลึกของคณะครูทุกคน
+              </p>
+              <div className="table-responsive">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>ชื่อ-นามสกุลครูผู้สอน</th>
+                      <th>ตำแหน่ง / สังกัดกลุ่มสาระ</th>
+                      <th style={{ textAlign: 'center' }}>จำนวนการจองนิเทศ</th>
+                      <th style={{ textAlign: 'center' }}>ประเมินแล้ว (ฉบับ)</th>
+                      <th style={{ textAlign: 'center' }}>คะแนนเฉลี่ยรวม</th>
+                      <th style={{ textAlign: 'center' }}>รายงานเชิงลึก</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {teachers.map((teacher) => {
+                      const stats = getTeacherOverallStats(teacher.id);
+                      return (
+                        <tr key={teacher.id}>
+                          <td style={{ fontWeight: 600 }}>{teacher.name}</td>
+                          <td style={{ fontSize: '13px' }}>{teacher.position}</td>
+                          <td style={{ textAlign: 'center', fontWeight: 600 }}>{stats.supervisionsCount}</td>
+                          <td style={{ textAlign: 'center', fontWeight: 600 }}>{stats.evalCount}</td>
+                          <td style={{ textAlign: 'center', fontWeight: 700, fontSize: '15px', color: stats.averageScore !== '-' ? 'var(--primary-color)' : 'var(--text-light)' }}>
+                            {stats.averageScore}
+                          </td>
+                          <td style={{ textAlign: 'center' }}>
+                            <button
+                              className="btn btn-outline"
+                              style={{ padding: '0.35rem 0.75rem', fontSize: '12px' }}
+                              onClick={() => setSelectedSummaryTeacher(teacher)}
+                            >
+                              🔍 ดูรายงานเชิงลึก
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : (
+            /* Part B: Drill down into selected teacher */
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+                <button
+                  className="btn btn-outline"
+                  onClick={() => {
+                    setSelectedSummaryTeacher(null);
+                    setSelectedSummarySupervision(null);
+                  }}
+                  style={{ padding: '0.4rem 0.8rem', fontSize: '13px' }}
+                >
+                  ← กลับไปยังรายชื่อคณะครู
+                </button>
+                <div style={{ fontSize: '14px', color: 'var(--text-medium)', backgroundColor: '#fafafa', padding: '0.5rem 1rem', borderRadius: '4px', border: '1px solid var(--border-color)' }}>
+                  รายงานสำหรับ: <strong>{selectedSummaryTeacher.name}</strong> ({selectedSummaryTeacher.position})
+                </div>
+              </div>
+
+              {/* Show supervisions list for this teacher */}
+              {(() => {
+                const teacherSups = supervisions.filter(s => s.teacherId === selectedSummaryTeacher.id);
+                if (teacherSups.length === 0) {
+                  return (
+                    <p style={{ color: 'var(--text-light)', textAlign: 'center', padding: '3rem', border: '1px dashed var(--border-color)', borderRadius: 'var(--radius-sm)' }}>
+                      ยังไม่มีประวัติการนิเทศในระบบสำหรับครูท่านนี้
+                    </p>
+                  );
+                }
+
+                return (
+                  <div className="table-responsive">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>รายวิชา</th>
+                          <th>ระดับชั้น/ห้องเรียน</th>
+                          <th>วัน-เวลาที่นิเทศ</th>
+                          <th>คณะกรรมการนิเทศ</th>
+                          <th style={{ textAlign: 'center' }}>สถานะการนิเทศ</th>
+                          <th style={{ textAlign: 'center' }}>คะแนนประเมิน (เฉลี่ย)</th>
+                          <th style={{ textAlign: 'center' }}>สรุปผลประเมิน</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {teacherSups.map((s) => {
+                          const avgData = getAverageEvalData(s);
+                          return (
+                            <tr key={s.id}>
+                              <td style={{ fontWeight: 600 }}>{s.subject}</td>
+                              <td>ม.{s.grade.replace('ม.', '')}/{s.room}</td>
+                              <td>{s.date ? `${formatThaiDate(s.date)} (${s.time.split(' ')[0] || s.time})` : '-'}</td>
+                              <td>{s.supervisors && s.supervisors.length > 0 ? s.supervisors.map(sup => sup.name).join(', ') : '-'}</td>
+                              <td style={{ textAlign: 'center' }}>
+                                <span className={`badge badge-${s.status}`}>
+                                  {s.status === 'pending' && 'อยู่ระหว่างจัดสรร'}
+                                  {s.status === 'pending_approval' && 'รอกรรมการอาสา'}
+                                  {s.status === 'approved' && 'แต่งตั้งเสร็จสิ้น'}
+                                  {s.status === 'completed' && 'บันทึกหลังสอนแล้ว'}
+                                </span>
+                              </td>
+                              <td style={{ textAlign: 'center', fontWeight: 700, color: avgData ? 'var(--primary-color)' : 'var(--text-light)' }}>
+                                {avgData ? avgData.overall : '-'}
+                              </td>
+                              <td style={{ textAlign: 'center' }}>
+                                <button
+                                  className="btn btn-outline"
+                                  style={{ padding: '0.3rem 0.6rem', fontSize: '12px' }}
+                                  onClick={() => setSelectedSummarySupervision(s)}
+                                  disabled={!avgData}
+                                >
+                                  📊 สรุปผล
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+        </div>
+      )}
+
+      {selectedEvalSupervision && (
+        <EvaluationModal
+          supervision={selectedEvalSupervision}
+          currentUser={currentUser}
+          onClose={() => setSelectedEvalSupervision(null)}
+          onSubmit={async (newEvaluations) => {
+            const success = await onUpdateSupervision(selectedEvalSupervision.id, {
+              evaluations: newEvaluations
+            });
+            if (success) {
+              alert('บันทึกผลการประเมินนิเทศเรียบร้อยแล้ว!');
+              setSelectedEvalSupervision(null);
+            } else {
+              alert('เกิดข้อผิดพลาดในการบันทึกข้อมูล');
+            }
+          }}
+        />
+      )}
+
+      {selectedSummarySupervision && (
+        <EvaluationSummaryModal
+          supervision={selectedSummarySupervision}
+          onClose={() => setSelectedSummarySupervision(null)}
+        />
       )}
     </div>
   );
