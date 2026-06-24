@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Camera, Upload, X } from 'lucide-react';
 
 const OBSERVATION_ITEMS = [
   { id: '1_1', no: '1.1', label: 'มีแผนการจัดการเรียนรู้ที่ใช้ประกอบการเรียนการสอน', group: '1. แผนการจัดการเรียนรู้' },
@@ -22,6 +23,50 @@ const OBSERVATION_ITEMS = [
   { id: '14', no: '14', label: 'การบันทึกหลังสอน และการนำผลการบันทึกหลังสอนมาแก้ไข / พัฒนา' }
 ];
 
+const resizeImage = (file) => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (e) => {
+      const img = new Image();
+      img.src = e.target.result;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+        const MAX_WIDTH = 800;
+        const MAX_HEIGHT = 800;
+
+        if (width > height) {
+          if (width > MAX_WIDTH) {
+            height *= MAX_WIDTH / width;
+            width = MAX_WIDTH;
+          }
+        } else {
+          if (height > MAX_HEIGHT) {
+            width *= MAX_HEIGHT / height;
+            height = MAX_HEIGHT;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+        resolve(dataUrl);
+      };
+      img.onerror = (err) => {
+        reject(err);
+      };
+    };
+    reader.onerror = (err) => {
+      reject(err);
+    };
+  });
+};
+
 export default function EvaluationModal({ supervision, currentUser, onClose, onSubmit }) {
   const [ratings, setRatings] = useState(() => {
     const initial = {};
@@ -34,6 +79,8 @@ export default function EvaluationModal({ supervision, currentUser, onClose, onS
   const [teacherBehavior, setTeacherBehavior] = useState('');
   const [teachingActivity, setTeachingActivity] = useState('');
   const [studentBehavior, setStudentBehavior] = useState('');
+  const [images, setImages] = useState([]);
+  const [isResizing, setIsResizing] = useState(false);
 
   // Load existing evaluation data if it exists for this supervisor
   useEffect(() => {
@@ -57,8 +104,37 @@ export default function EvaluationModal({ supervision, currentUser, onClose, onS
       setTeacherBehavior(myEval.teacherBehavior ?? '');
       setTeachingActivity(myEval.teachingActivity ?? '');
       setStudentBehavior(myEval.studentBehavior ?? '');
+      setImages(myEval.images ?? []);
     }
   }, [supervision, currentUser]);
+
+  const handleImageChange = async (e) => {
+    const files = Array.from(e.target.files);
+    if (!files || files.length === 0) return;
+
+    if (images.length + files.length > 4) {
+      alert('สามารถอัปโหลดรูปภาพได้สูงสุด 4 รูปเท่านั้นครับ');
+      return;
+    }
+
+    setIsResizing(true);
+    try {
+      const resizedDataUrls = await Promise.all(
+        files.map(file => resizeImage(file))
+      );
+      setImages(prev => [...prev, ...resizedDataUrls]);
+    } catch (err) {
+      console.error('Error processing images:', err);
+      alert('เกิดข้อผิดพลาดในการประมวลผลรูปภาพ');
+    } finally {
+      setIsResizing(false);
+      e.target.value = '';
+    }
+  };
+
+  const removeImage = (indexToRemove) => {
+    setImages(prev => prev.filter((_, idx) => idx !== indexToRemove));
+  };
 
   const handleFormSubmit = (e) => {
     e.preventDefault();
@@ -81,7 +157,8 @@ export default function EvaluationModal({ supervision, currentUser, onClose, onS
         ratings: formattedRatings,
         teacherBehavior: teacherBehavior.trim(),
         teachingActivity: teachingActivity.trim(),
-        studentBehavior: studentBehavior.trim()
+        studentBehavior: studentBehavior.trim(),
+        images: images
       }
     };
 
@@ -279,6 +356,130 @@ export default function EvaluationModal({ supervision, currentUser, onClose, onS
                   required
                 ></textarea>
               </div>
+            </div>
+
+            <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1rem', marginTop: '1rem' }}>
+              <h4 style={{ fontWeight: 700, fontSize: '14px', color: 'var(--primary-color)', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <Camera size={16} /> รูปภาพประกอบการนิเทศ (สูงสุด 4 รูป)
+              </h4>
+              
+              <style>{`
+                @keyframes spin {
+                  0% { transform: rotate(0deg); }
+                  100% { transform: rotate(360deg); }
+                }
+              `}</style>
+
+              {/* Image Previews */}
+              {images.length > 0 && (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: '0.75rem', marginBottom: '1rem' }}>
+                  {images.map((imgUrl, index) => (
+                    <div key={index} style={{ position: 'relative', width: '100%', aspectRatio: '4/3', borderRadius: '6px', overflow: 'hidden', border: '1px solid #cbd5e1', boxShadow: 'var(--shadow-sm)' }}>
+                      <img 
+                        src={imgUrl} 
+                        alt={`Supervision upload ${index + 1}`} 
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeImage(index)}
+                        style={{
+                          position: 'absolute',
+                          top: '4px',
+                          right: '4px',
+                          backgroundColor: 'rgba(231, 76, 60, 0.9)',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '50%',
+                          width: '24px',
+                          height: '24px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          cursor: 'pointer',
+                          boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                          transition: 'background-color 0.2s',
+                          padding: 0
+                        }}
+                        title="ลบรูปภาพ"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Upload Button area */}
+              {images.length < 4 ? (
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type="file"
+                    id="supervision-image-upload"
+                    multiple
+                    accept="image/*"
+                    onChange={handleImageChange}
+                    style={{ display: 'none' }}
+                    disabled={isResizing}
+                  />
+                  <label
+                    htmlFor="supervision-image-upload"
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      padding: '1.5rem',
+                      border: '2px dashed #cbd5e1',
+                      borderRadius: '8px',
+                      cursor: isResizing ? 'not-allowed' : 'pointer',
+                      backgroundColor: '#fafafa',
+                      transition: 'all 0.25s',
+                      textAlign: 'center'
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!isResizing) {
+                        e.currentTarget.style.borderColor = 'var(--primary-color)';
+                        e.currentTarget.style.backgroundColor = '#f0fdf4';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isResizing) {
+                        e.currentTarget.style.borderColor = '#cbd5e1';
+                        e.currentTarget.style.backgroundColor = '#fafafa';
+                      }
+                    }}
+                  >
+                    {isResizing ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
+                        <div className="spinner" style={{
+                          width: '24px',
+                          height: '24px',
+                          border: '3px solid #f3f3f3',
+                          borderTop: '3px solid var(--primary-color)',
+                          borderRadius: '50%',
+                          animation: 'spin 1s linear infinite'
+                        }}></div>
+                        <span style={{ fontSize: '13px', color: 'var(--text-medium)', fontWeight: 500 }}>กำลังย่อขนาดและประมวลผลรูปภาพ...</span>
+                      </div>
+                    ) : (
+                      <>
+                        <Upload size={24} style={{ color: 'var(--primary-color)', marginBottom: '0.5rem' }} />
+                        <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-dark)' }}>
+                          คลิกเพื่อเลือกไฟล์รูปภาพ
+                        </span>
+                        <span style={{ fontSize: '11px', color: 'var(--text-medium)', marginTop: '0.2rem' }}>
+                          (เลือกพร้อมกันได้หลายรูป สูงสุด 4 รูป, อัปโหลดแล้ว {images.length}/4 รูป)
+                        </span>
+                      </>
+                    )}
+                  </label>
+                </div>
+              ) : (
+                <div style={{ padding: '1rem', backgroundColor: '#f0fdf4', border: '1px solid #b2f5ea', borderRadius: '6px', textAlign: 'center', color: 'var(--primary-color)', fontSize: '13px', fontWeight: 600 }}>
+                  ✓ อัปโหลดครบ 4 รูปแล้ว (หากต้องการแก้ไข ให้กดปุ่มลบสีแดงที่มุมขวาบนของรูปเพื่อเพิ่มใหม่)
+                </div>
+              )}
             </div>
           </div>
           <div className="modal-footer">

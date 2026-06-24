@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 
 const OBSERVATION_ITEMS = [
   { id: '1_1', no: '1.1', label: 'มีแผนการจัดการเรียนรู้ที่ใช้ประกอบการเรียนการสอน', group: '1. แผนการจัดการเรียนรู้' },
@@ -23,6 +23,8 @@ const OBSERVATION_ITEMS = [
 ];
 
 export default function EvaluationSummaryModal({ supervision, onClose }) {
+  const [activeLightboxImage, setActiveLightboxImage] = useState(null);
+
   const formatThaiDate = (dateStr) => {
     if (!dateStr) return '';
     const parts = dateStr.split('-');
@@ -206,6 +208,44 @@ export default function EvaluationSummaryModal({ supervision, onClose }) {
                           {ev.studentBehavior || '- ไม่มีระบุ -'}
                         </div>
                       </div>
+
+                      {ev.images && ev.images.length > 0 && (
+                        <div style={{ marginTop: '0.75rem', borderTop: '1px dashed #e2e8f0', paddingTop: '0.5rem' }}>
+                          <strong style={{ display: 'block', marginBottom: '0.4rem' }}>📷 ภาพประกอบการนิเทศ:</strong>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', gap: '8px' }}>
+                            {ev.images.map((imgUrl, imgIdx) => (
+                              <div 
+                                key={imgIdx} 
+                                onClick={() => setActiveLightboxImage(imgUrl)}
+                                style={{ 
+                                  position: 'relative', 
+                                  width: '100%', 
+                                  aspectRatio: '4/3', 
+                                  borderRadius: '4px', 
+                                  overflow: 'hidden', 
+                                  border: '1px solid #cbd5e1',
+                                  cursor: 'pointer',
+                                  transition: 'transform 0.2s, box-shadow 0.2s',
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.transform = 'scale(1.05)';
+                                  e.currentTarget.style.boxShadow = '0 4px 8px rgba(0,0,0,0.15)';
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.transform = 'none';
+                                  e.currentTarget.style.boxShadow = 'none';
+                                }}
+                              >
+                                <img 
+                                  src={imgUrl} 
+                                  alt={`Supervision photo ${imgIdx + 1}`} 
+                                  style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -231,6 +271,62 @@ export default function EvaluationSummaryModal({ supervision, onClose }) {
           <button type="button" className="btn btn-primary" onClick={onClose}>ปิดหน้าต่าง</button>
         </div>
       </div>
+
+      {/* Image Lightbox */}
+      {activeLightboxImage && (
+        <div 
+          onClick={() => setActiveLightboxImage(null)}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100vw',
+            height: '100vh',
+            backgroundColor: 'rgba(0, 0, 0, 0.85)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            cursor: 'pointer'
+          }}
+        >
+          <button
+            onClick={() => setActiveLightboxImage(null)}
+            style={{
+              position: 'absolute',
+              top: '20px',
+              right: '20px',
+              backgroundColor: 'rgba(255,255,255,0.2)',
+              border: 'none',
+              borderRadius: '50%',
+              width: '40px',
+              height: '40px',
+              color: 'white',
+              fontSize: '24px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              lineHeight: 1
+            }}
+          >
+            ×
+          </button>
+          <img 
+            src={activeLightboxImage} 
+            alt="Supervision Photo Expanded" 
+            style={{ 
+              maxWidth: '90%', 
+              maxHeight: '85%', 
+              objectFit: 'contain',
+              borderRadius: '4px',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+              cursor: 'default'
+            }} 
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
     </div>
   );
 }
