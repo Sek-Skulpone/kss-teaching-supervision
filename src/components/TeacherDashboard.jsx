@@ -13,7 +13,9 @@ import {
   Trash2,
   Edit,
   FolderOpen,
-  Plus
+  Plus,
+  UserCheck,
+  Users
 } from 'lucide-react';
 import EvaluationModal from './EvaluationModal';
 import EvaluationSummaryModal from './EvaluationSummaryModal';
@@ -299,10 +301,17 @@ export default function TeacherDashboard({
           กำหนดการและการนิเทศของฉัน ({myRequests.length})
         </button>
         <button
+          className={`tab-btn ${activeTab === 'my-duties' ? 'active' : ''}`}
+          onClick={() => setActiveTab('my-duties')}
+        >
+          <UserCheck size={18} />
+          ตารางปฏิบัติหน้าที่ผู้นิเทศ ({myVolunteeredSupervisions.length})
+        </button>
+        <button
           className={`tab-btn ${activeTab === 'volunteer' ? 'active' : ''}`}
           onClick={() => setActiveTab('volunteer')}
         >
-          <User size={18} />
+          <Users size={18} />
           เสนอความจำนงเป็นผู้นิเทศการสอน ({openForVolunteering.length})
         </button>
       </div>
@@ -862,38 +871,35 @@ export default function TeacherDashboard({
         </div>
       )}
 
-      {/* Tab 4: Volunteer & Volunteer Status */}
-      {activeTab === 'volunteer' && (
-        <div>
-          {/* Section A: Open list */}
-          <div className="card">
-            <h2 className="card-title">
-              <User />
-              กำหนดการนิเทศการสอนที่เปิดรับการเสนอความจำนงเป็นผู้นิเทศ
-            </h2>
-            <p style={{ fontSize: '13px', color: 'var(--text-medium)', marginBottom: '1rem' }}>
-              ครูผู้สอนสามารถเสนอความจำนงเป็นผู้นิเทศการสอนสำหรับวิชาของเพื่อนครูที่ยังแต่งตั้งผู้นิเทศไม่ครบถ้วนได้ โดยการแต่งตั้งจะมีผลสมบูรณ์เมื่อได้รับการอนุมัติจากฝ่ายวิชาการ
-            </p>
+      {/* Tab 4: My Supervision Duties */}
+      {activeTab === 'my-duties' && (
+        <div className="card">
+          <h2 className="card-title">
+            <UserCheck />
+            กำหนดการปฏิบัติหน้าที่ผู้นิเทศของคุณ (ได้รับการแต่งตั้ง / อยู่ระหว่างรออนุมัติ)
+          </h2>
 
-            {openForVolunteering.length === 0 ? (
-              <p style={{ color: 'var(--text-light)', textAlign: 'center', padding: '1.5rem', border: '1px dashed var(--border-color)', borderRadius: 'var(--radius-sm)' }}>
-                ไม่พบกำหนดการนิเทศที่เปิดรับเสนอความจำนงในขณะนี้
-              </p>
-            ) : (
-              <div className="table-responsive">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>ครูผู้รับการนิเทศ</th>
-                      <th>รายวิชา</th>
-                      <th>ระดับชั้น/ห้องเรียน</th>
-                      <th>วัน-เวลาที่นิเทศ</th>
-                      <th>แผนการจัดการเรียนรู้</th>
-                      <th>การดำเนินงาน</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {openForVolunteering.map((req) => (
+          {myVolunteeredSupervisions.length === 0 ? (
+            <p style={{ color: 'var(--text-light)', textAlign: 'center', padding: '1.5rem' }}>
+              ไม่พบประวัติการเสนอความจำนงหรือภาระงานนิเทศการสอนของท่านในขณะนี้
+            </p>
+          ) : (
+            <div className="table-responsive">
+              <table>
+                <thead>
+                  <tr>
+                    <th>ครูผู้สอน</th>
+                    <th>รายวิชา</th>
+                    <th>ระดับชั้น/ห้องเรียน</th>
+                    <th>วัน-เวลาที่นิเทศ</th>
+                    <th>แผนการจัดการเรียนรู้</th>
+                    <th>สถานะการพิจารณา</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {myVolunteeredSupervisions.map((req) => {
+                    const isApproved = req.supervisors && req.supervisors.some(sup => sup.id === currentUser.id);
+                    return (
                       <tr key={req.id}>
                         <td style={{ fontWeight: 600 }}>{req.teacherName}</td>
                         <td>{req.subject}</td>
@@ -901,97 +907,101 @@ export default function TeacherDashboard({
                         <td>{formatThaiDate(req.date)} (เวลา {req.time})</td>
                         <td>
                           <a href={req.lessonPlanUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary-color)', textDecoration: 'underline' }}>
-                            เปิดแผนการจัดการเรียนรู้
+                            แผนการจัดการเรียนรู้
                           </a>
                         </td>
                         <td>
-                          <button
-                            className="btn btn-secondary"
-                            style={{ padding: '0.4rem 0.8rem', fontSize: '13px' }}
-                            onClick={() => onVolunteer(req.id)}
-                          >
-                            เสนอความจำนงเป็นผู้นิเทศ
-                          </button>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', alignItems: 'center' }}>
+                            {isApproved ? (
+                              <>
+                                <span className="badge badge-approved" style={{ padding: '0.4rem 0.8rem', display: 'inline-flex', gap: '0.25rem', alignItems: 'center' }}>
+                                  <CheckCircle2 size={12} /> ได้รับการแต่งตั้งเป็นผู้นิเทศแล้ว
+                                </span>
+                                {req.date && (
+                                  <button
+                                    type="button"
+                                    className="btn btn-secondary"
+                                    style={{ padding: '0.25rem 0.5rem', fontSize: '11px', whiteSpace: 'nowrap', marginTop: '0.25rem' }}
+                                    onClick={() => {
+                                      setSelectedEvalSupervision(req);
+                                    }}
+                                  >
+                                    📝 {req.evaluations?.[currentUser.id] ? 'แก้ไขการประเมิน' : 'กรอกการประเมินนิเทศ'}
+                                  </button>
+                                )}
+                              </>
+                            ) : (
+                              <span className="badge badge-volunteered" style={{ padding: '0.4rem 0.8rem', display: 'inline-flex', gap: '0.25rem', alignItems: 'center' }}>
+                                <Clock size={12} /> อยู่ระหว่างฝ่ายวิชาการพิจารณาแต่งตั้ง
+                              </span>
+                            )}
+                          </div>
                         </td>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
-          {/* Section B: My Volunteered Tasks */}
-          <div className="card">
-            <h2 className="card-title">
-              <CalendarIcon />
-              กำหนดการปฏิบัติหน้าที่ผู้นิเทศของคุณ (ได้รับการแต่งตั้ง / อยู่ระหว่างรออนุมัติ)
-            </h2>
+      {/* Tab 5: Volunteer & Volunteer Status */}
+      {activeTab === 'volunteer' && (
+        <div className="card">
+          <h2 className="card-title">
+            <Users />
+            กำหนดการนิเทศการสอนที่เปิดรับการเสนอความจำนงเป็นผู้นิเทศ
+          </h2>
+          <p style={{ fontSize: '13px', color: 'var(--text-medium)', marginBottom: '1rem' }}>
+            ครูผู้สอนสามารถเสนอความจำนงเป็นผู้นิเทศการสอนสำหรับวิชาของเพื่อนครูที่ยังแต่งตั้งผู้นิเทศไม่ครบถ้วนได้ โดยการแต่งตั้งจะมีผลสมบูรณ์เมื่อได้รับการอนุมัติจากฝ่ายวิชาการ
+          </p>
 
-            {myVolunteeredSupervisions.length === 0 ? (
-              <p style={{ color: 'var(--text-light)', textAlign: 'center', padding: '1.5rem' }}>ไม่พบประวัติการเสนอความจำนงหรือภาระงานนิเทศการสอนของท่านในขณะนี้</p>
-            ) : (
-              <div className="table-responsive">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>ครูผู้สอน</th>
-                      <th>รายวิชา</th>
-                      <th>ระดับชั้น/ห้องเรียน</th>
-                      <th>วัน-เวลาที่นิเทศ</th>
-                      <th>แผนการจัดการเรียนรู้</th>
-                      <th>สถานะการพิจารณา</th>
+          {openForVolunteering.length === 0 ? (
+            <p style={{ color: 'var(--text-light)', textAlign: 'center', padding: '1.5rem', border: '1px dashed var(--border-color)', borderRadius: 'var(--radius-sm)' }}>
+              ไม่พบกำหนดการนิเทศที่เปิดรับเสนอความจำนงในขณะนี้
+            </p>
+          ) : (
+            <div className="table-responsive">
+              <table>
+                <thead>
+                  <tr>
+                    <th>ครูผู้รับการนิเทศ</th>
+                    <th>รายวิชา</th>
+                    <th>ระดับชั้น/ห้องเรียน</th>
+                    <th>วัน-เวลาที่นิเทศ</th>
+                    <th>แผนการจัดการเรียนรู้</th>
+                    <th>การดำเนินงาน</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {openForVolunteering.map((req) => (
+                    <tr key={req.id}>
+                      <td style={{ fontWeight: 600 }}>{req.teacherName}</td>
+                      <td>{req.subject}</td>
+                      <td>ชั้น ม.{req.grade.replace('ม.', '')}/{req.room}</td>
+                      <td>{formatThaiDate(req.date)} (เวลา {req.time})</td>
+                      <td>
+                        <a href={req.lessonPlanUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary-color)', textDecoration: 'underline' }}>
+                          เปิดแผนการจัดการเรียนรู้
+                        </a>
+                      </td>
+                      <td>
+                        <button
+                          className="btn btn-secondary"
+                          style={{ padding: '0.4rem 0.8rem', fontSize: '13px' }}
+                          onClick={() => onVolunteer(req.id)}
+                        >
+                          เสนอความจำนงเป็นผู้นิเทศ
+                        </button>
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {myVolunteeredSupervisions.map((req) => {
-                      const isApproved = req.supervisors && req.supervisors.some(sup => sup.id === currentUser.id);
-                      return (
-                        <tr key={req.id}>
-                          <td style={{ fontWeight: 600 }}>{req.teacherName}</td>
-                          <td>{req.subject}</td>
-                          <td>ชั้น ม.{req.grade.replace('ม.', '')}/{req.room}</td>
-                          <td>{formatThaiDate(req.date)} (เวลา {req.time})</td>
-                          <td>
-                            <a href={req.lessonPlanUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary-color)', textDecoration: 'underline' }}>
-                              แผนการจัดการเรียนรู้
-                            </a>
-                          </td>
-                          <td>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', alignItems: 'center' }}>
-                              {isApproved ? (
-                                <>
-                                  <span className="badge badge-approved" style={{ padding: '0.4rem 0.8rem', display: 'inline-flex', gap: '0.25rem', alignItems: 'center' }}>
-                                    <CheckCircle2 size={12} /> ได้รับการแต่งตั้งเป็นผู้นิเทศแล้ว
-                                  </span>
-                                  {req.date && (
-                                    <button
-                                      type="button"
-                                      className="btn btn-secondary"
-                                      style={{ padding: '0.25rem 0.5rem', fontSize: '11px', whiteSpace: 'nowrap', marginTop: '0.25rem' }}
-                                      onClick={() => {
-                                        setSelectedEvalSupervision(req);
-                                      }}
-                                    >
-                                      📝 {req.evaluations?.[currentUser.id] ? 'แก้ไขการประเมิน' : 'กรอกการประเมินนิเทศ'}
-                                    </button>
-                                  )}
-                                </>
-                              ) : (
-                                <span className="badge badge-volunteered" style={{ padding: '0.4rem 0.8rem', display: 'inline-flex', gap: '0.25rem', alignItems: 'center' }}>
-                                  <Clock size={12} /> อยู่ระหว่างฝ่ายวิชาการพิจารณาแต่งตั้ง
-                                </span>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 
