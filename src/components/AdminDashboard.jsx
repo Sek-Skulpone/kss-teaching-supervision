@@ -770,6 +770,7 @@ export default function AdminDashboard({
                       <th>วัน-เวลาที่นิเทศ</th>
                       <th>คณะกรรมการนิเทศ</th>
                       <th>สถานะการนิเทศ</th>
+                      <th>นิเทศหน้าเดียว</th>
                       <th>รายงานบันทึกหลังสอน</th>
                     </tr>
                   </thead>
@@ -900,6 +901,26 @@ export default function AdminDashboard({
                           <span className={`badge badge-${req.status}`}>
                             {req.status === 'approved' ? 'แต่งตั้งคณะกรรมการแล้ว' : 'บันทึกหลังการสอนแล้ว'}
                           </span>
+                        </td>
+                        <td>
+                          {req.onePageReport ? (
+                            <button
+                              type="button"
+                              className="btn btn-outline"
+                              style={{ padding: '0.25rem 0.5rem', fontSize: '11px', display: 'inline-flex', gap: '0.25rem', alignItems: 'center' }}
+                              onClick={() => {
+                                if (req.onePageReport.type === 'image') {
+                                  setActivePlcLightboxImage(req.onePageReport.fileData);
+                                } else {
+                                  window.open(req.onePageReport.type === 'link' ? req.onePageReport.fileUrl : req.onePageReport.fileData, '_blank');
+                                }
+                              }}
+                            >
+                              📄 เปิดดูรายงาน
+                            </button>
+                          ) : (
+                            <span style={{ fontSize: '12px', color: 'var(--text-light)', fontStyle: 'italic' }}>ยังไม่อัปโหลด</span>
+                          )}
                         </td>
                         <td>
                           {req.status === 'completed' ? (
@@ -1384,6 +1405,7 @@ export default function AdminDashboard({
                           <th>คณะกรรมการนิเทศ</th>
                           <th style={{ textAlign: 'center' }}>สถานะการนิเทศ</th>
                           <th style={{ textAlign: 'center' }}>คะแนนประเมิน (เฉลี่ย)</th>
+                          <th style={{ textAlign: 'center' }}>นิเทศหน้าเดียว</th>
                           <th style={{ textAlign: 'center' }}>สรุปผลประเมิน</th>
                         </tr>
                       </thead>
@@ -1406,6 +1428,26 @@ export default function AdminDashboard({
                               </td>
                               <td style={{ textAlign: 'center', fontWeight: 700, color: avgData ? 'var(--primary-color)' : 'var(--text-light)' }}>
                                 {avgData ? avgData.overall : '-'}
+                              </td>
+                              <td style={{ textAlign: 'center' }}>
+                                {s.onePageReport ? (
+                                  <button
+                                    type="button"
+                                    className="btn btn-outline"
+                                    style={{ padding: '0.25rem 0.5rem', fontSize: '11px', display: 'inline-flex', gap: '0.25rem', alignItems: 'center' }}
+                                    onClick={() => {
+                                      if (s.onePageReport.type === 'image') {
+                                        setActivePlcLightboxImage(s.onePageReport.fileData);
+                                      } else {
+                                        window.open(s.onePageReport.type === 'link' ? s.onePageReport.fileUrl : s.onePageReport.fileData, '_blank');
+                                      }
+                                    }}
+                                  >
+                                    📄 เปิดดูรายงาน
+                                  </button>
+                                ) : (
+                                  <span style={{ fontSize: '12px', color: 'var(--text-light)', fontStyle: 'italic' }}>ยังไม่อัปโหลด</span>
+                                )}
                               </td>
                               <td style={{ textAlign: 'center' }}>
                                 <button

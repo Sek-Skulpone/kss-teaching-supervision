@@ -155,6 +155,139 @@ export default function TeacherDashboard({
   const [isResizingPlc, setIsResizingPlc] = useState(false);
   const [activePlcLightbox, setActivePlcLightbox] = useState(null);
 
+  // G. One-Page Report States
+  const [selectedOnePageSupervision, setSelectedOnePageSupervision] = useState(null);
+  const [isOnePageModalOpen, setIsOnePageModalOpen] = useState(false);
+  const [onePageType, setOnePageType] = useState('image'); // 'image' | 'pdf' | 'link'
+  const [onePageFile, setOnePageFile] = useState(''); // base64
+  const [onePageLink, setOnePageLink] = useState('');
+  const [onePageError, setOnePageError] = useState('');
+  const [isProcessingOnePage, setIsProcessingOnePage] = useState(false);
+
+  const handleOnePageFileChange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setOnePageError('');
+    setIsProcessingOnePage(true);
+
+    try {
+      if (file.type.startsWith('image/')) {
+        const dataUrl = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.readAsDataURL(file);
+          reader.onload = (e) => {
+            const img = new Image();
+            img.src = e.target.result;
+            img.onload = () => {
+              const canvas = document.createElement('canvas');
+              let width = img.width;
+              let height = img.height;
+              const MAX_WIDTH = 1000;
+              const MAX_HEIGHT = 1000;
+
+              if (width > height) {
+                if (width > MAX_WIDTH) {
+                  height *= MAX_WIDTH / width;
+                  width = MAX_WIDTH;
+                }
+              } else {
+                if (height > MAX_HEIGHT) {
+                  width *= MAX_HEIGHT / height;
+                  height = MAX_HEIGHT;
+                }
+              }
+
+              canvas.width = width;
+              canvas.height = height;
+              const ctx = canvas.getContext('2d');
+              ctx.drawImage(img, 0, 0, width, height);
+
+              const compressedUrl = canvas.toDataURL('image/jpeg', 0.7);
+              resolve(compressedUrl);
+            };
+            img.onerror = reject;
+          };
+          reader.onerror = reject;
+        });
+        setOnePageFile(dataUrl);
+        setOnePageType('image');
+      } else if (file.type === 'application/pdf') {
+        const MAX_PDF_SIZE = 300 * 1024;
+        if (file.size > MAX_PDF_SIZE) {
+          setOnePageError('ไฟล์ PDF มีขนาดใหญ่เกินไป (ต้องไม่เกิน 300KB) กรุณาใช้ไฟล์ภาพหรือแนบลิงก์ Google Drive แทนครับ');
+          e.target.value = '';
+          setIsProcessingOnePage(false);
+          return;
+        }
+
+        const dataUrl = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.readAsDataURL(file);
+          reader.onload = (e) => resolve(e.target.result);
+          reader.onerror = reject;
+        });
+        setOnePageFile(dataUrl);
+        setOnePageType('pdf');
+      } else {
+        setOnePageError('ไม่รองรับประเภทไฟล์นี้ กรุณาเลือกไฟล์ภาพ (JPG, PNG) หรือไฟล์ PDF เท่านั้นครับ');
+      }
+    } catch (err) {
+      console.error(err);
+      setOnePageError('เกิดข้อผิดพลาดในการประมวลผลไฟล์');
+    } finally {
+      setIsProcessingOnePage(false);
+    }
+  };
+
+  const handleOnePageSubmit = async (e) => {
+    e.preventDefault();
+    if (onePageType === 'link' && !onePageLink.trim()) {
+      alert('กรุณากรอกลิงก์ Google Drive หรือลิงก์สาธารณะ');
+      return;
+    }
+    if ((onePageType === 'image' || onePageType === 'pdf') && !onePageFile) {
+      alert('กรุณาเลือกไฟล์อัปโหลด');
+      return;
+    }
+
+    const onePageData = {
+      type: onePageType,
+      fileData: onePageType !== 'link' ? onePageFile : null,
+      fileUrl: onePageType === 'link' ? onePageLink.trim() : null,
+      uploadedAt: new Date().toISOString()
+    };
+
+    const success = await onUpdateSupervision(selectedOnePageSupervision.id, {
+      onePageReport: onePageData
+    });
+
+    if (success) {
+      alert('บันทึกรายงานการนิเทศหน้าเดียวเรียบร้อยแล้ว!');
+      setIsOnePageModalOpen(false);
+      setSelectedOnePageSupervision(null);
+      setOnePageFile('');
+      setOnePageLink('');
+      setOnePageType('image');
+      setOnePageError('');
+    } else {
+      alert('เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง');
+    }
+  };
+
+  const handleDeleteOnePage = async (supervisionId) => {
+    if (window.confirm('คุณต้องการลบรายงานการนิเทศหน้าเดียวนี้ใช่หรือไม่?')) {
+      const success = await onUpdateSupervision(supervisionId, {
+        onePageReport: null
+      });
+      if (success) {
+        alert('ลบรายงานนิเทศหน้าเดียวเรียบร้อยแล้ว');
+      } else {
+        alert('เกิดข้อผิดพลาดในการลบข้อมูล');
+      }
+    }
+  };
+
   const handlePlcImageChange = async (e) => {
     const files = Array.from(e.target.files);
     if (!files || files.length === 0) return;
@@ -777,6 +910,7 @@ export default function TeacherDashboard({
                     <th>คณะกรรมการนิเทศ</th>
                     <th>สถานะ</th>
                     <th>รายงานผล</th>
+                    <th>นิเทศหน้าเดียว</th>
                     <th style={{ textAlign: 'center' }}>การจัดการการจอง</th>
                   </tr>
                 </thead>
@@ -876,6 +1010,72 @@ export default function TeacherDashboard({
                           >
                             📊 ดูผลประเมิน ({Object.keys(req.evaluations).length} ท่าน)
                           </button>
+                        )}
+                      </td>
+                      <td>
+                        {req.onePageReport ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center' }}>
+                            <button
+                              type="button"
+                              className="btn btn-outline"
+                              style={{ padding: '0.25rem 0.5rem', fontSize: '11px', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
+                              onClick={() => {
+                                if (req.onePageReport.type === 'image') {
+                                  setActivePlcLightbox(req.onePageReport.fileData);
+                                } else {
+                                  window.open(req.onePageReport.type === 'link' ? req.onePageReport.fileUrl : req.onePageReport.fileData, '_blank');
+                                }
+                              }}
+                            >
+                              📄 เปิดดูรายงาน
+                            </button>
+                            <div style={{ display: 'flex', gap: '4px' }}>
+                              <button
+                                type="button"
+                                className="btn btn-outline"
+                                style={{ padding: '0.15rem 0.3rem', fontSize: '10px' }}
+                                onClick={() => {
+                                  setSelectedOnePageSupervision(req);
+                                  setOnePageType(req.onePageReport.type);
+                                  setOnePageFile(req.onePageReport.fileData || '');
+                                  setOnePageLink(req.onePageReport.fileUrl || '');
+                                  setIsOnePageModalOpen(true);
+                                }}
+                              >
+                                แก้ไข
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-outline btn-danger"
+                                style={{ padding: '0.15rem 0.3rem', fontSize: '10px', color: '#e74c3c', borderColor: '#e74c3c' }}
+                                onClick={() => handleDeleteOnePage(req.id)}
+                              >
+                                ลบ
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          req.status === 'approved' || req.status === 'completed' ? (
+                            <button
+                              type="button"
+                              className="btn btn-secondary"
+                              style={{ padding: '0.25rem 0.5rem', fontSize: '11px', whiteSpace: 'nowrap' }}
+                              onClick={() => {
+                                setSelectedOnePageSupervision(req);
+                                setOnePageType('image');
+                                setOnePageFile('');
+                                setOnePageLink('');
+                                setOnePageError('');
+                                setIsOnePageModalOpen(true);
+                              }}
+                            >
+                              📤 อัปโหลด
+                            </button>
+                          ) : (
+                            <span style={{ fontSize: '11px', color: 'var(--text-light)', fontStyle: 'italic' }}>
+                              รอบทเรียนอนุมัติ
+                            </span>
+                          )
                         )}
                       </td>
                       <td style={{ textAlign: 'center' }}>
@@ -1563,6 +1763,115 @@ export default function TeacherDashboard({
             }} 
             onClick={(e) => e.stopPropagation()}
           />
+        </div>
+      )}
+
+      {/* Modal: Upload One-Page Supervision Report */}
+      {isOnePageModalOpen && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: '520px', width: '90%' }}>
+            <div className="modal-header">
+              <h3>รายงานการนิเทศหน้าเดียว (One-Page Report)</h3>
+              <button className="modal-close-btn" onClick={() => setIsOnePageModalOpen(false)}>×</button>
+            </div>
+            <form onSubmit={handleOnePageSubmit}>
+              <div className="modal-body">
+                <div style={{ backgroundColor: 'var(--primary-light)', padding: '0.75rem', borderRadius: 'var(--radius-sm)', marginBottom: '1rem', fontSize: '13px' }}>
+                  <strong>รายวิชา:</strong> {selectedOnePageSupervision.subject} (ม.{selectedOnePageSupervision.grade.replace('ม.', '')}/{selectedOnePageSupervision.room})
+                </div>
+
+                <div className="form-group">
+                  <label>รูปแบบการรายงานผล</label>
+                  <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', cursor: 'pointer', fontSize: '14px' }}>
+                      <input
+                        type="radio"
+                        name="onePageType"
+                        value="image"
+                        checked={onePageType === 'image' || onePageType === 'pdf'}
+                        onChange={() => {
+                          setOnePageType('image');
+                          setOnePageFile('');
+                        }}
+                      />
+                      อัปโหลดไฟล์ (รูปภาพ / PDF &lt; 300KB)
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', cursor: 'pointer', fontSize: '14px' }}>
+                      <input
+                        type="radio"
+                        name="onePageType"
+                        value="link"
+                        checked={onePageType === 'link'}
+                        onChange={() => {
+                          setOnePageType('link');
+                          setOnePageLink('');
+                        }}
+                      />
+                      แนบลิงก์ (Google Drive / ลิงก์ภายนอก)
+                    </label>
+                  </div>
+                </div>
+
+                {onePageType !== 'link' ? (
+                  <div className="form-group">
+                    <label>เลือกไฟล์รายงาน (JPG, PNG, WebP หรือ PDF ขนาด &lt; 300KB)</label>
+                    <input
+                      type="file"
+                      accept="image/*,application/pdf"
+                      onChange={handleOnePageFileChange}
+                      disabled={isProcessingOnePage}
+                    />
+                    {isProcessingOnePage && <p style={{ fontSize: '12px', color: 'var(--primary-color)', marginTop: '0.25rem' }}>กำลังประมวลผลไฟล์...</p>}
+                    {onePageError && <p style={{ fontSize: '12px', color: '#e74c3c', marginTop: '0.25rem', fontWeight: 600 }}>⚠️ {onePageError}</p>}
+                    
+                    {onePageFile && (
+                      <div style={{ marginTop: '1rem', border: '1px solid #ddd', borderRadius: '4px', padding: '0.5rem', backgroundColor: '#fcfcfc' }}>
+                        <span style={{ fontSize: '12px', color: 'var(--text-medium)', fontWeight: 600 }}>ตัวอย่างรายงาน:</span>
+                        {onePageFile.startsWith('data:application/pdf') ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
+                            <span style={{ fontSize: '24px' }}>📕</span>
+                            <div>
+                              <div style={{ fontWeight: 600, fontSize: '13px' }}>เอกสาร PDF นิเทศหน้าเดียว</div>
+                              <button
+                                type="button"
+                                className="btn btn-outline"
+                                style={{ padding: '0.2rem 0.4rem', fontSize: '10px', marginTop: '0.25rem' }}
+                                onClick={() => window.open(onePageFile, '_blank')}
+                              >
+                                เปิดตัวอย่าง PDF
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div style={{ marginTop: '0.5rem', maxWidth: '100%', height: '150px', overflow: 'hidden', borderRadius: '4px', border: '1px solid #eee' }}>
+                            <img src={onePageFile} alt="One page report preview" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="form-group">
+                    <label>ลิงก์เอกสารนิเทศหน้าเดียว (Google Drive / PDF ลิงก์สาธารณะ)</label>
+                    <input
+                      type="url"
+                      value={onePageLink}
+                      onChange={(e) => setOnePageLink(e.target.value)}
+                      placeholder="https://drive.google.com/file/d/..."
+                      required
+                    />
+                    <p style={{ fontSize: '11px', color: 'var(--text-medium)', marginTop: '0.25rem' }}>
+                      * หากมีไฟล์ PDF ขนาดเกิน 300KB แนะนำให้อัปโหลดขึ้น Google Drive แล้วนำลิงก์มาวาง
+                    </p>
+                  </div>
+                )}
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-outline" onClick={() => setIsOnePageModalOpen(false)}>ยกเลิก</button>
+                <button type="submit" className="btn btn-primary" disabled={isProcessingOnePage}>บันทึกข้อมูล</button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>

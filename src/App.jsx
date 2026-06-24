@@ -66,6 +66,7 @@ export default function App() {
   const [selectedSummarySupervision, setSelectedSummarySupervision] = useState(null);
   const [plcLogs, setPlcLogs] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [activeOnePageLightbox, setActiveOnePageLightbox] = useState(null);
 
   // Initialize and load session on mount
   useEffect(() => {
@@ -783,6 +784,28 @@ export default function App() {
                   </div>
                 </div>
 
+                {selectedEvent.onePageReport && (
+                  <div style={{ marginTop: '0.5rem', borderTop: '1px solid var(--border-color)', paddingTop: '0.5rem' }}>
+                    <span style={{ fontSize: 'var(--font-xs)', color: 'var(--text-medium)', fontWeight: 600 }}>รายงานนิเทศหน้าเดียว (One-Page Report)</span>
+                    <div style={{ marginTop: '0.25rem' }}>
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        style={{ width: '100%', padding: '0.5rem', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}
+                        onClick={() => {
+                          if (selectedEvent.onePageReport.type === 'image') {
+                            setActiveOnePageLightbox(selectedEvent.onePageReport.fileData);
+                          } else {
+                            window.open(selectedEvent.onePageReport.type === 'link' ? selectedEvent.onePageReport.fileUrl : selectedEvent.onePageReport.fileData, '_blank');
+                          }
+                        }}
+                      >
+                        📄 เปิดดูรายงานนิเทศหน้าเดียว
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 <div style={{ backgroundColor: '#f8f9fa', padding: '0.75rem', borderRadius: 'var(--radius-sm)', marginTop: '0.5rem' }}>
                   <span style={{ fontSize: 'var(--font-xs)', color: 'var(--text-medium)', fontWeight: 600 }}>คณะกรรมการนิเทศการสอน (อย่างน้อย 2 ท่าน)</span>
                   {selectedEvent.supervisors && selectedEvent.supervisors.length > 0 ? (
@@ -989,6 +1012,62 @@ export default function App() {
           supervision={selectedSummarySupervision}
           onClose={() => setSelectedSummarySupervision(null)}
         />
+      )}
+
+      {/* Lightbox for One-Page Report Photos */}
+      {activeOnePageLightbox && (
+        <div 
+          onClick={() => setActiveOnePageLightbox(null)}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100vw',
+            height: '100vh',
+            backgroundColor: 'rgba(0, 0, 0, 0.85)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            cursor: 'pointer'
+          }}
+        >
+          <button
+            onClick={() => setActiveOnePageLightbox(null)}
+            style={{
+              position: 'absolute',
+              top: '20px',
+              right: '20px',
+              backgroundColor: 'rgba(255,255,255,0.2)',
+              border: 'none',
+              borderRadius: '50%',
+              width: '40px',
+              height: '40px',
+              color: 'white',
+              fontSize: '24px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              lineHeight: 1
+            }}
+          >
+            ×
+          </button>
+          <img 
+            src={activeOnePageLightbox} 
+            alt="One-Page Report Expanded" 
+            style={{ 
+              maxWidth: '90%', 
+              maxHeight: '85%', 
+              objectFit: 'contain',
+              borderRadius: '4px',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+              cursor: 'default'
+            }} 
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
       )}
 
       {isLoading && (
