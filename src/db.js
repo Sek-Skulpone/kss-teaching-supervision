@@ -56,6 +56,7 @@ let dbCache = {
   teachers: null,
   supervisions: null,
   termPlans: null,
+  plcLogs: null,
   lastLoaded: 0
 };
 
@@ -63,7 +64,7 @@ const cacheTimeout = 1000; // 1 second cache window
 
 const ensureDBLoaded = async (force = false) => {
   const now = Date.now();
-  if (!force && dbCache.teachers && dbCache.supervisions && dbCache.termPlans && (now - dbCache.lastLoaded < cacheTimeout)) {
+  if (!force && dbCache.teachers && dbCache.supervisions && dbCache.termPlans && dbCache.plcLogs && (now - dbCache.lastLoaded < cacheTimeout)) {
     return dbCache;
   }
   
@@ -71,21 +72,24 @@ const ensureDBLoaded = async (force = false) => {
     const teachers = safeJsonParse(localStorage.getItem('ks_teachers'), SEED_USERS);
     const supervisions = safeJsonParse(localStorage.getItem('ks_supervisions'), []);
     const termPlans = safeJsonParse(localStorage.getItem('ks_term_plans'), []);
-    dbCache = { teachers, supervisions, termPlans, lastLoaded: now };
+    const plcLogs = safeJsonParse(localStorage.getItem('ks_plc_logs'), []);
+    dbCache = { teachers, supervisions, termPlans, plcLogs, lastLoaded: now };
     return dbCache;
   }
   
   try {
     // Parallel fetch from Firestore
-    const [teachersSnap, supervisionsSnap, termPlansSnap] = await Promise.all([
+    const [teachersSnap, supervisionsSnap, termPlansSnap, plcLogsSnap] = await Promise.all([
       getDoc(doc(db, "system_db", "teachers")),
       getDoc(doc(db, "system_db", "supervisions")),
-      getDoc(doc(db, "system_db", "term_plans"))
+      getDoc(doc(db, "system_db", "term_plans")),
+      getDoc(doc(db, "system_db", "plc_logs"))
     ]);
     
     let teachers = SEED_USERS;
     let supervisions = [];
     let termPlans = [];
+    let plcLogs = [];
     
     // Process Teachers
     if (teachersSnap.exists()) {
@@ -107,13 +111,21 @@ const ensureDBLoaded = async (force = false) => {
     } else {
       await setDoc(doc(db, "system_db", "term_plans"), { list: [] });
     }
+
+    // Process PLC Logs
+    if (plcLogsSnap.exists()) {
+      plcLogs = plcLogsSnap.data().list || [];
+    } else {
+      await setDoc(doc(db, "system_db", "plc_logs"), { list: [] });
+    }
     
-    dbCache = { teachers, supervisions, termPlans, lastLoaded: now };
+    dbCache = { teachers, supervisions, termPlans, plcLogs, lastLoaded: now };
     
     // Cache locally
     localStorage.setItem('ks_teachers', JSON.stringify(teachers));
     localStorage.setItem('ks_supervisions', JSON.stringify(supervisions));
     localStorage.setItem('ks_term_plans', JSON.stringify(termPlans));
+    localStorage.setItem('ks_plc_logs', JSON.stringify(plcLogs));
     
     return dbCache;
   } catch (e) {
@@ -121,7 +133,8 @@ const ensureDBLoaded = async (force = false) => {
     const teachers = safeJsonParse(localStorage.getItem('ks_teachers'), SEED_USERS);
     const supervisions = safeJsonParse(localStorage.getItem('ks_supervisions'), []);
     const termPlans = safeJsonParse(localStorage.getItem('ks_term_plans'), []);
-    dbCache = { teachers, supervisions, termPlans, lastLoaded: now };
+    const plcLogs = safeJsonParse(localStorage.getItem('ks_plc_logs'), []);
+    dbCache = { teachers, supervisions, termPlans, plcLogs, lastLoaded: now };
     return dbCache;
   }
 };
@@ -421,13 +434,30 @@ const defaultSettings = {
     'กลุ่มสาระการเรียนรู้ศิลปะ',
     'กลุ่มสาระการเรียนรู้การงานอาชีพ',
     'กลุ่มสาระการเรียนรู้ภาษาต่างประเทศ'
+  ],
+  plcGroups: [
+    'กลุ่ม PLC คณิตศาสตร์',
+    'กลุ่ม PLC ภาษาต่างประเทศ',
+    'กลุ่ม PLC วิทยาศาสตร์และเทคโนโลยี',
+    'กลุ่ม PLC ภาษาไทย',
+    'กลุ่ม PLC สังคมศึกษา ศาสนา และวัฒนธรรม',
+    'กลุ่ม PLC ศิลปะ',
+    'กลุ่ม PLC สุขศึกษาและพลศึกษา',
+    'กลุ่ม PLC การงานอาชีพ'
   ]
+};
+
+const mergeSettingsWithDefaults = (settingsObj) => {
+  return {
+    ...defaultSettings,
+    ...settingsObj
+  };
 };
 
 export const getSystemSettings = async () => {
   if (!isFirebaseInitialized) {
     const local = localStorage.getItem('ks_settings');
-    return local ? safeJsonParse(local, defaultSettings) : defaultSettings;
+    return local ? mergeSettingsWithDefaults(safeJsonParse(local, {})) : defaultSettings;
   }
   
   try {
@@ -435,8 +465,9 @@ export const getSystemSettings = async () => {
     const docSnap = await getDoc(docRef);
     if (docSnap.exists()) {
       const data = docSnap.data() || defaultSettings;
-      localStorage.setItem('ks_settings', JSON.stringify(data));
-      return data;
+      const merged = mergeSettingsWithDefaults(data);
+      localStorage.setItem('ks_settings', JSON.stringify(merged));
+      return merged;
     } else {
       await setDoc(docRef, defaultSettings);
       localStorage.setItem('ks_settings', JSON.stringify(defaultSettings));
@@ -445,7 +476,7 @@ export const getSystemSettings = async () => {
   } catch (err) {
     console.warn("Failed to load settings from Firebase, using cache:", err);
     const local = localStorage.getItem('ks_settings');
-    return local ? safeJsonParse(local, defaultSettings) : defaultSettings;
+    return local ? mergeSettingsWithDefaults(safeJsonParse(local, {})) : defaultSettings;
   }
 };
 
@@ -463,4 +494,56 @@ export const updateSystemSettings = async (newSettings) => {
     console.error("Failed to update settings in Firebase:", e);
     return false;
   }
+};
+
+/* ==========================================================================
+   5. PLC LOGS MANAGEMENT
+   ========================================================================== */
+
+export const getPlcLogs = async () => {
+  const dbData = await ensureDBLoaded();
+  return dbData.plcLogs;
+};
+
+export const addPlcLog = async (logData) => {
+  const dbData = await ensureDBLoaded();
+  const newLog = {
+    id: `plc-${Date.now()}`,
+    submittedAt: new Date().toISOString(),
+    ...logData
+  };
+  dbData.plcLogs.push(newLog);
+  const success = await saveCollection('plc_logs', dbData.plcLogs);
+  return success ? newLog : null;
+};
+
+export const updatePlcLog = async (logId, updatedFields) => {
+  const dbData = await ensureDBLoaded();
+  dbData.plcLogs = dbData.plcLogs.map(log => {
+    if (log.id === logId) {
+      return { ...log, ...updatedFields, updatedAt: new Date().toISOString() };
+    }
+    return log;
+  });
+  const success = await saveCollection('plc_logs', dbData.plcLogs);
+  return success;
+};
+
+export const deletePlcLog = async (logId) => {
+  const dbData = await ensureDBLoaded();
+  dbData.plcLogs = dbData.plcLogs.filter(log => log.id !== logId);
+  const success = await saveCollection('plc_logs', dbData.plcLogs);
+  return success;
+};
+
+export const updateTeacherPlcGroup = async (teacherId, plcGroup) => {
+  const dbData = await ensureDBLoaded();
+  dbData.teachers = dbData.teachers.map(t => {
+    if (t.id === teacherId) {
+      return { ...t, plcGroup };
+    }
+    return t;
+  });
+  const success = await saveCollection('teachers', dbData.teachers);
+  return success;
 };

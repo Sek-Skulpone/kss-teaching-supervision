@@ -15,10 +15,56 @@ import {
   FolderOpen,
   Plus,
   UserCheck,
-  Users
+  Users,
+  RotateCw
 } from 'lucide-react';
 import EvaluationModal from './EvaluationModal';
 import EvaluationSummaryModal from './EvaluationSummaryModal';
+
+const resizeImage = (file) => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (e) => {
+      const img = new Image();
+      img.src = e.target.result;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+        const MAX_WIDTH = 800;
+        const MAX_HEIGHT = 800;
+
+        if (width > height) {
+          if (width > MAX_WIDTH) {
+            height *= MAX_WIDTH / width;
+            width = MAX_WIDTH;
+          }
+        } else {
+          if (height > MAX_HEIGHT) {
+            width *= MAX_HEIGHT / height;
+            height = MAX_HEIGHT;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+        resolve(dataUrl);
+      };
+      img.onerror = (err) => {
+        reject(err);
+      };
+    };
+    reader.onerror = (err) => {
+      reject(err);
+    };
+  });
+};
+
 
 const PERIODS_LIST = [
   'คาบที่ 1 (08.30 - 09.20 น.)',
@@ -41,7 +87,12 @@ export default function TeacherDashboard({
   termPlans = [],
   onRegisterTermPlan,
   onUpdateTermPlan,
-  onDeleteTermPlan
+  onDeleteTermPlan,
+  teachers = [],
+  plcLogs = [],
+  onAddPlcLog,
+  onUpdatePlcLog,
+  onDeletePlcLog
 }) {
   const [activeTab, setActiveTab] = useState('request');
 
@@ -90,6 +141,112 @@ export default function TeacherDashboard({
 
   // E. Summary Report State
   const [selectedReportSummary, setSelectedReportSummary] = useState(null);
+
+  // F. PLC Form States
+  const [selectedPlcLog, setSelectedPlcLog] = useState(null);
+  const [isPlcModalOpen, setIsPlcModalOpen] = useState(false);
+  const [plcModalCycle, setPlcModalCycle] = useState(1);
+  const [plcDate, setPlcDate] = useState('');
+  const [plcLocation, setPlcLocation] = useState('');
+  const [plcCheckedTeachers, setPlcCheckedTeachers] = useState([]);
+  const [plcExternalMembers, setPlcExternalMembers] = useState('');
+  const [plcOutcome, setPlcOutcome] = useState('');
+  const [plcImages, setPlcImages] = useState([]);
+  const [isResizingPlc, setIsResizingPlc] = useState(false);
+  const [activePlcLightbox, setActivePlcLightbox] = useState(null);
+
+  const handlePlcImageChange = async (e) => {
+    const files = Array.from(e.target.files);
+    if (!files || files.length === 0) return;
+
+    if (plcImages.length + files.length > 4) {
+      alert('สามารถอัปโหลดรูปภาพได้สูงสุด 4 รูปเท่านั้นครับ');
+      return;
+    }
+
+    setIsResizingPlc(true);
+    try {
+      const resizedDataUrls = await Promise.all(
+        files.map(file => resizeImage(file))
+      );
+      setPlcImages(prev => [...prev, ...resizedDataUrls]);
+    } catch (err) {
+      console.error('Error processing images:', err);
+      alert('เกิดข้อผิดพลาดในการประมวลผลรูปภาพ');
+    } finally {
+      setIsResizingPlc(false);
+      e.target.value = '';
+    }
+  };
+
+  const removePlcImage = (indexToRemove) => {
+    setPlcImages(prev => prev.filter((_, idx) => idx !== indexToRemove));
+  };
+
+  const handlePlcSubmit = async (e) => {
+    e.preventDefault();
+    if (!plcDate || !plcLocation || !plcOutcome) {
+      alert('กรุณากรอกข้อมูลวัน-เวลา, สถานที่ และผลการดำเนินงานให้ครบถ้วน');
+      return;
+    }
+
+    const memberNames = [currentUser.name, ...plcCheckedTeachers];
+    if (plcExternalMembers.trim()) {
+      memberNames.push(...plcExternalMembers.split(',').map(m => m.trim()).filter(Boolean));
+    }
+    const uniqueMembers = Array.from(new Set(memberNames));
+    const finalMembersString = uniqueMembers.join(', ');
+
+    const logData = {
+      teacherId: currentUser.id,
+      teacherName: currentUser.name,
+      plcGroup: currentUser.plcGroup,
+      cycle: Number(plcModalCycle),
+      date: plcDate.trim(),
+      location: plcLocation.trim(),
+      members: finalMembersString,
+      outcome: plcOutcome.trim(),
+      images: plcImages
+    };
+
+    let success = false;
+    if (selectedPlcLog) {
+      success = await onUpdatePlcLog(selectedPlcLog.id, logData);
+      if (success) {
+        alert(`แก้ไขข้อมูลกิจกรรม PLC วงรอบที่ ${plcModalCycle} สำเร็จเรียบร้อยแล้ว`);
+      }
+    } else {
+      const addedLog = await onAddPlcLog(logData);
+      success = !!addedLog;
+      if (success) {
+        alert(`บันทึกกิจกรรม PLC วงรอบที่ ${plcModalCycle} สำเร็จเรียบร้อยแล้ว`);
+      }
+    }
+
+    if (success) {
+      setIsPlcModalOpen(false);
+      setSelectedPlcLog(null);
+      setPlcDate('');
+      setPlcLocation('');
+      setPlcCheckedTeachers([]);
+      setPlcExternalMembers('');
+      setPlcOutcome('');
+      setPlcImages([]);
+    } else {
+      alert('เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง');
+    }
+  };
+
+  const handleDeletePlcLogClick = async (logId, cycleNum) => {
+    if (window.confirm(`คุณแน่ใจหรือไม่ที่จะลบบันทึกกิจกรรม PLC วงรอบที่ ${cycleNum}? ข้อมูลทั้งหมดและภาพหลักฐานจะถูกนำออกจากระบบ`)) {
+      const success = await onDeletePlcLog(logId);
+      if (success) {
+        alert(`ลบข้อมูลกิจกรรม PLC วงรอบที่ ${cycleNum} สำเร็จแล้ว`);
+      } else {
+        alert('เกิดข้อผิดพลาดในการลบข้อมูล กรุณาลองใหม่อีกครั้ง');
+      }
+    }
+  };
 
   // Handle Supervision Request Submit
   const handleRequestSubmit = (e) => {
@@ -247,6 +404,7 @@ export default function TeacherDashboard({
   // Filtering data subsets
   const myRequests = supervisions.filter(s => s.teacherId === currentUser.id);
   const myTermPlans = termPlans.filter(tp => tp.teacherId === currentUser.id);
+  const myPlcLogs = plcLogs.filter(log => log.teacherId === currentUser.id);
   
   // Supervisions of other teachers open for volunteering
   const openForVolunteering = supervisions.filter(
@@ -292,6 +450,13 @@ export default function TeacherDashboard({
         >
           <FolderOpen size={18} />
           ส่งแผนการจัดการเรียนรู้ประจำภาคเรียน
+        </button>
+        <button
+          className={`tab-btn ${activeTab === 'plc' ? 'active' : ''}`}
+          onClick={() => setActiveTab('plc')}
+        >
+          <RotateCw size={18} />
+          บันทึกกิจกรรม PLC (4 วงรอบ) ({myPlcLogs.length}/4)
         </button>
         <button
           className={`tab-btn ${activeTab === 'my-supervisions' ? 'active' : ''}`}
@@ -1005,6 +1170,173 @@ export default function TeacherDashboard({
         </div>
       )}
 
+      {/* Tab PLC: บันทึกกิจกรรม PLC (4 วงรอบ) */}
+      {activeTab === 'plc' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+          {/* PLC Group Banner */}
+          <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', borderLeft: '5px solid var(--primary-color)' }}>
+            <div>
+              <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--primary-color)', display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0 }}>
+                <RotateCw />
+                บันทึกและติดตามกิจกรรม PLC (Professional Learning Community) 4 วงรอบ
+              </h2>
+              {currentUser.plcGroup ? (
+                <p style={{ margin: '0.4rem 0 0 0', fontSize: '14px', color: 'var(--text-medium)' }}>
+                  คุณสังกัดกลุ่ม PLC: <strong style={{ color: 'var(--text-dark)', backgroundColor: 'var(--primary-light)', padding: '0.2rem 0.5rem', borderRadius: '4px' }}>{currentUser.plcGroup}</strong>
+                </p>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#e67e22', fontWeight: 600, fontSize: '14px', marginTop: '0.5rem' }}>
+                  <AlertCircle size={16} />
+                  <span>ยังไม่สังกัดกลุ่ม PLC (กรุณาติดต่อฝ่ายวิชาการเพื่อระบุกลุ่ม PLC ในประวัติทำเนียบบุคลากร)</span>
+                </div>
+              )}
+            </div>
+            
+            {currentUser.plcGroup && (
+              <div style={{ backgroundColor: 'var(--primary-light)', padding: '0.5rem 1rem', borderRadius: '30px', fontSize: '13px', fontWeight: 600, color: 'var(--primary-color)' }}>
+                บันทึกความคืบหน้า: {myPlcLogs.length} / 4 วงรอบ
+              </div>
+            )}
+          </div>
+
+          {/* 4 Cycles Cards Grid */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1.5rem' }}>
+            {[
+              { cycleNum: 1, title: 'วงรอบที่ 1: วิเคราะห์ปัญหาและกำหนดเป้าหมาย', subtitle: 'Analyze & Goal Setting' },
+              { cycleNum: 2, title: 'วงรอบที่ 2: ออกแบบและพัฒนานวัตกรรมการจัดการเรียนรู้', subtitle: 'Design & Development' },
+              { cycleNum: 3, title: 'วงรอบที่ 3: ปฏิบัติการสอนและนิเทศแบบชี้แนะ', subtitle: 'Implementation & Coaching' },
+              { cycleNum: 4, title: 'วงรอบที่ 4: สะท้อนผล ขยายผล และยกระดับคุณภาพ', subtitle: 'Reflection & Scaling Up' }
+            ].map(cycle => {
+              const log = myPlcLogs.find(l => Number(l.cycle) === cycle.cycleNum);
+              return (
+                <div key={cycle.cycleNum} className="card" style={{ margin: 0, display: 'flex', flexDirection: 'column', height: '100%', justifyContent: 'space-between', border: '1px solid var(--border-color)', position: 'relative' }}>
+                  <div>
+                    {/* Header */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
+                      <span className={`badge badge-${log ? 'approved' : 'pending'}`} style={{ fontSize: '11px', padding: '0.25rem 0.5rem' }}>
+                        {log ? '✓ บันทึกผลแล้ว' : '⚠️ ยังไม่บันทึก'}
+                      </span>
+                      <span style={{ fontSize: '18px', fontWeight: 800, color: log ? 'var(--primary-color)' : 'var(--text-light)' }}>
+                        #{cycle.cycleNum}
+                      </span>
+                    </div>
+
+                    <h3 style={{ fontSize: '15px', fontWeight: 700, margin: '0 0 0.2rem 0', color: 'var(--text-dark)' }}>{cycle.title}</h3>
+                    <p style={{ fontSize: '12px', color: 'var(--text-medium)', margin: '0 0 1rem 0', fontStyle: 'italic' }}>{cycle.subtitle}</p>
+
+                    {log ? (
+                      <div style={{ fontSize: '13px', display: 'flex', flexDirection: 'column', gap: '0.4rem', borderTop: '1px solid #f1f5f9', paddingTop: '0.75rem', marginBottom: '1rem' }}>
+                        <div>
+                          <strong style={{ color: 'var(--text-medium)' }}>📅 วัน-เวลา:</strong> {log.date}
+                        </div>
+                        <div>
+                          <strong style={{ color: 'var(--text-medium)' }}>📍 สถานที่:</strong> {log.location}
+                        </div>
+                        <div>
+                          <strong style={{ color: 'var(--text-medium)' }}>👥 สมาชิก:</strong> <span style={{ color: 'var(--text-dark)', wordBreak: 'break-all' }}>{log.members}</span>
+                        </div>
+                        <div style={{ marginTop: '0.25rem' }}>
+                          <strong style={{ color: 'var(--text-medium)', display: 'block' }}>📝 ผลการดำเนินงาน:</strong>
+                          <p style={{ margin: '0.1rem 0 0 0', color: 'var(--text-dark)', whiteSpace: 'pre-wrap', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: '1.4' }}>
+                            {log.outcome}
+                          </p>
+                        </div>
+
+                        {log.images && log.images.length > 0 && (
+                          <div style={{ marginTop: '0.5rem' }}>
+                            <strong style={{ color: 'var(--text-medium)' }}>📷 ภาพหลักฐาน:</strong>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px', marginTop: '0.25rem' }}>
+                              {log.images.map((img, idx) => (
+                                <div
+                                  key={idx}
+                                  onClick={() => setActivePlcLightbox(img)}
+                                  style={{ width: '100%', aspectRatio: '4/3', borderRadius: '4px', overflow: 'hidden', border: '1px solid #cbd5e1', cursor: 'pointer' }}
+                                >
+                                  <img src={img} alt={`PLC log photo ${idx}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div style={{ textAlign: 'center', padding: '1.5rem 0', border: '1px dashed #e2e8f0', borderRadius: '6px', color: 'var(--text-light)', fontSize: '13px', fontStyle: 'italic', marginBottom: '1rem' }}>
+                        ยังไม่มีข้อมูลบันทึกในรอบนี้
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Actions */}
+                  <div style={{ display: 'flex', gap: '0.5rem', marginTop: 'auto', paddingTop: '0.75rem', borderTop: '1px solid #f1f5f9' }}>
+                    {log ? (
+                      <>
+                        <button
+                          type="button"
+                          className="btn btn-outline"
+                          style={{ flex: 1, padding: '0.4rem', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}
+                          onClick={() => {
+                            setSelectedPlcLog(log);
+                            setPlcModalCycle(cycle.cycleNum);
+                            setPlcDate(log.date);
+                            setPlcLocation(log.location);
+                            setPlcOutcome(log.outcome);
+                            setPlcImages(log.images || []);
+                            
+                            const membersArr = log.members.split(',').map(m => m.trim());
+                            const checked = teachers
+                              .filter(t => t.id !== currentUser.id && membersArr.includes(t.name))
+                              .map(t => t.name);
+                            setPlcCheckedTeachers(checked);
+                            
+                            const teacherNames = teachers.map(t => t.name);
+                            const external = membersArr.filter(name => name !== currentUser.name && !teacherNames.includes(name));
+                            setPlcExternalMembers(external.join(', '));
+                            
+                            setIsPlcModalOpen(true);
+                          }}
+                        >
+                          <Edit size={13} />
+                          แก้ไข
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-outline btn-danger"
+                          style={{ color: '#e74c3c', borderColor: '#e74c3c', padding: '0.4rem 0.6rem' }}
+                          onClick={() => handleDeletePlcLogClick(log.id, cycle.cycleNum)}
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        style={{ width: '100%', padding: '0.5rem', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}
+                        disabled={!currentUser.plcGroup}
+                        onClick={() => {
+                          setSelectedPlcLog(null);
+                          setPlcModalCycle(cycle.cycleNum);
+                          setPlcDate('');
+                          setPlcLocation('');
+                          setPlcCheckedTeachers([]);
+                          setPlcExternalMembers('');
+                          setPlcOutcome('');
+                          setPlcImages([]);
+                          setIsPlcModalOpen(true);
+                        }}
+                      >
+                        <Plus size={14} />
+                        บันทึกข้อมูลวงรอบ
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Modal Classroom Observation Evaluation Form */}
       {selectedEvalSupervision && (
         <EvaluationModal
@@ -1031,6 +1363,207 @@ export default function TeacherDashboard({
           supervision={selectedReportSummary}
           onClose={() => setSelectedReportSummary(null)}
         />
+      )}
+
+      {/* Modal: Write/Edit PLC Cycle Log */}
+      {isPlcModalOpen && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: '600px', width: '90%' }}>
+            <div className="modal-header">
+              <h3>
+                {selectedPlcLog ? 'แก้ไขบันทึกกิจกรรม PLC' : 'เพิ่มบันทึกกิจกรรม PLC'}: วงรอบที่ {plcModalCycle}
+              </h3>
+              <button className="modal-close-btn" onClick={() => setIsPlcModalOpen(false)}>×</button>
+            </div>
+            <form onSubmit={handlePlcSubmit}>
+              <div className="modal-body" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
+                <div style={{ backgroundColor: 'var(--primary-light)', padding: '0.75rem', borderRadius: 'var(--radius-sm)', marginBottom: '1.25rem', fontSize: '13px' }}>
+                  <strong>กลุ่ม PLC:</strong> {currentUser.plcGroup} <br />
+                  <strong>วงรอบ:</strong> วงรอบที่ {plcModalCycle}: {
+                    Number(plcModalCycle) === 1 ? 'วิเคราะห์ปัญหาและกำหนดเป้าหมาย (Analyze & Goal Setting)' :
+                    Number(plcModalCycle) === 2 ? 'ออกแบบและพัฒนานวัตกรรมการจัดการเรียนรู้ (Design & Development)' :
+                    Number(plcModalCycle) === 3 ? 'ปฏิบัติการสอนและนิเทศแบบชี้แนะ (Implementation & Coaching)' :
+                    'สะท้อนผล ขยายผล และยกระดับคุณภาพ (Reflection & Scaling Up)'
+                  }
+                </div>
+
+                <div className="form-group">
+                  <label>วัน เดือน ปี และเวลา (เช่น 24 มิ.ย. 2569 เวลา 13.00 น.)</label>
+                  <input
+                    type="text"
+                    value={plcDate}
+                    onChange={(e) => setPlcDate(e.target.value)}
+                    placeholder="เช่น 24 มิถุนายน 2569 เวลา 13.00 น."
+                    required
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label>สถานที่ (เช่น ห้องสมุด, ห้องประชุมกลุ่มสาระคณิตศาสตร์)</label>
+                  <input
+                    type="text"
+                    value={plcLocation}
+                    onChange={(e) => setPlcLocation(e.target.value)}
+                    placeholder="เช่น ห้องปฏิบัติการฟิสิกส์ หรือ อาคารอเนกประสงค์"
+                    required
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label>สมาชิกผู้เข้าร่วมกิจกรรม PLC ในโรงเรียน (เลือกจากรายชื่อบุคลากร)</label>
+                  <div style={{ maxHeight: '150px', overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: '4px', padding: '0.5rem', backgroundColor: '#fafafa' }}>
+                    {teachers.filter(t => t.id !== currentUser.id).length === 0 ? (
+                      <span style={{ fontSize: '12px', color: 'var(--text-light)', fontStyle: 'italic' }}>ไม่พบรายชื่อครูคนอื่นในระบบ</span>
+                    ) : (
+                      teachers.filter(t => t.id !== currentUser.id).map(t => (
+                        <label key={t.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.2rem 0', cursor: 'pointer', fontSize: '13px' }}>
+                          <input
+                            type="checkbox"
+                            checked={plcCheckedTeachers.includes(t.name)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setPlcCheckedTeachers([...plcCheckedTeachers, t.name]);
+                              } else {
+                                setPlcCheckedTeachers(plcCheckedTeachers.filter(name => name !== t.name));
+                              }
+                            }}
+                          />
+                          <span>{t.name} ({t.position?.split(' (')[0] || t.role})</span>
+                        </label>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label>ระบุชื่อสมาชิกภายนอกเพิ่มเติม (ถ้ามี, คั่นด้วยเครื่องหมายจุลภาค ',')</label>
+                  <input
+                    type="text"
+                    value={plcExternalMembers}
+                    onChange={(e) => setPlcExternalMembers(e.target.value)}
+                    placeholder="เช่น ศึกษานิเทศก์สมรศรี, อาจารย์ภายนอก"
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label>ผลการดำเนินงานกิจกรรม PLC ในวงรอบนี้</label>
+                  <textarea
+                    rows="5"
+                    value={plcOutcome}
+                    onChange={(e) => setPlcOutcome(e.target.value)}
+                    placeholder="ระบุรายละเอียดผลลัพธ์การประชุม ปัญหาที่วิเคราะห์ นวัตกรรมที่ออกแบบ การสะท้อนผล หรือขยายผล..."
+                    required
+                  ></textarea>
+                </div>
+
+                <div className="form-group">
+                  <label>อัปโหลดรูปภาพกิจกรรม PLC (สูงสุด 4 รูป, ระบบจะบีบอัดภาพอัตโนมัติ)</label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={handlePlcImageChange}
+                    disabled={isResizingPlc}
+                  />
+                  {isResizingPlc && <p style={{ fontSize: '12px', color: 'var(--primary-color)', marginTop: '0.25rem' }}>กำลังประมวลผลและบีบอัดรูปภาพ...</p>}
+                  
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.5rem', marginTop: '0.5rem' }}>
+                    {plcImages.map((img, idx) => (
+                      <div key={idx} style={{ position: 'relative', aspectRatio: '4/3', borderRadius: '4px', overflow: 'hidden', border: '1px solid #ddd' }}>
+                        <img src={img} alt={`PLC Preview ${idx}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        <button
+                          type="button"
+                          onClick={() => removePlcImage(idx)}
+                          style={{
+                            position: 'absolute',
+                            top: '2px',
+                            right: '2px',
+                            backgroundColor: 'rgba(231, 76, 60, 0.9)',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '50%',
+                            width: '20px',
+                            height: '20px',
+                            fontSize: '12px',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            lineHeight: 1
+                          }}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-outline" onClick={() => setIsPlcModalOpen(false)}>ยกเลิก</button>
+                <button type="submit" className="btn btn-primary" disabled={isResizingPlc}>
+                  {isResizingPlc ? 'กำลังบันทึกภาพ...' : 'บันทึกข้อมูล'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Lightbox for PLC Photos */}
+      {activePlcLightbox && (
+        <div 
+          onClick={() => setActivePlcLightbox(null)}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100vw',
+            height: '100vh',
+            backgroundColor: 'rgba(0, 0, 0, 0.85)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            cursor: 'pointer'
+          }}
+        >
+          <button
+            onClick={() => setActivePlcLightbox(null)}
+            style={{
+              position: 'absolute',
+              top: '20px',
+              right: '20px',
+              backgroundColor: 'rgba(255,255,255,0.2)',
+              border: 'none',
+              borderRadius: '50%',
+              width: '40px',
+              height: '40px',
+              color: 'white',
+              fontSize: '24px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              lineHeight: 1
+            }}
+          >
+            ×
+          </button>
+          <img 
+            src={activePlcLightbox} 
+            alt="PLC Expanded Photo" 
+            style={{ 
+              maxWidth: '90%', 
+              maxHeight: '85%', 
+              objectFit: 'contain',
+              borderRadius: '4px',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+              cursor: 'default'
+            }} 
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
       )}
     </div>
   );

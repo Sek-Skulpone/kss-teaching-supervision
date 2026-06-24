@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { AlertCircle, CheckCircle2, UserCheck, Eye, ClipboardList, Trash2, Calendar as CalendarIcon, Users, UserPlus, Shield } from 'lucide-react';
+import { AlertCircle, CheckCircle2, UserCheck, Eye, ClipboardList, Trash2, Calendar as CalendarIcon, Users, UserPlus, Shield, RotateCw } from 'lucide-react';
 import EvaluationModal from './EvaluationModal';
 import EvaluationSummaryModal from './EvaluationSummaryModal';
 
@@ -25,7 +25,10 @@ export default function AdminDashboard({
   onDeleteTeacher,
   onUpdateSupervision,
   settings = { positions: [], departments: [] },
-  onUpdateSettings
+  onUpdateSettings,
+  onUpdateTeacherPlc,
+  plcLogs = [],
+  onDeletePlcLog
 }) {
   const [activeSubTab, setActiveSubTab] = useState('supervisions');
   const [selectedTeacherId, setSelectedTeacherId] = useState({});
@@ -33,6 +36,13 @@ export default function AdminDashboard({
   const [selectedSummaryTeacher, setSelectedSummaryTeacher] = useState(null);
   const [selectedSummarySupervision, setSelectedSummarySupervision] = useState(null);
   const [selectedEvalSupervision, setSelectedEvalSupervision] = useState(null);
+  const [newPlcGroupOption, setNewPlcGroupOption] = useState('');
+  const [selectedPlcGroup, setSelectedPlcGroup] = useState('');
+  const [plcFilterGroup, setPlcFilterGroup] = useState('');
+  const [plcFilterSearch, setPlcFilterSearch] = useState('');
+  const [selectedPlcTeacher, setSelectedPlcTeacher] = useState(null);
+  const [selectedPlcLogDetail, setSelectedPlcLogDetail] = useState(null);
+  const [activePlcLightboxImage, setActivePlcLightboxImage] = useState(null);
 
   // States for scheduling date/time
   const [editingScheduleId, setEditingScheduleId] = useState(null);
@@ -59,6 +69,9 @@ export default function AdminDashboard({
     }
     if (settings.departments && settings.departments.length > 0 && !selectedDepartment) {
       setSelectedDepartment(settings.departments[0]);
+    }
+    if (settings.plcGroups && settings.plcGroups.length > 0 && !selectedPlcGroup) {
+      setSelectedPlcGroup(settings.plcGroups[0]);
     }
   }, [settings]);
 
@@ -122,17 +135,14 @@ export default function AdminDashboard({
       return;
     }
 
-    const combinedPosition = `${selectedPosition} (${selectedDepartment})`;
-
-    const payload = {
-      username: formattedUsername,
-      password: newPassword,
-      name: newName,
-      position: combinedPosition,
-      role: newRole
-    };
-
-    const success = await onAddTeacher(payload);
+    const success = await onAddTeacher({
+      username: newUsername.toLowerCase().trim(),
+      password: newPassword.trim(),
+      name: newName.trim(),
+      role: newRole,
+      position: `${selectedPosition} (${selectedDepartment.replace('กลุ่มสาระการเรียนรู้', '')})`,
+      plcGroup: newRole === 'teacher' ? selectedPlcGroup : ''
+    });
     if (success) {
       alert('เพิ่มข้อมูลบุคลากรสำเร็จเรียบร้อยแล้ว');
       setNewUsername('');
@@ -220,6 +230,48 @@ export default function AdminDashboard({
           setSelectedDepartment(updated.departments[0] || '');
         }
         alert('ลบตัวเลือกกลุ่มสาระเรียบร้อย');
+      }
+    }
+  };
+
+  const handleAddPlcGroupOption = async (e) => {
+    e.preventDefault();
+    const val = newPlcGroupOption.trim();
+    if (!val) return;
+    const plcGroups = settings.plcGroups || [];
+    if (plcGroups.includes(val)) {
+      alert('กลุ่ม PLC นี้มีอยู่แล้ว');
+      return;
+    }
+    const updated = {
+      ...settings,
+      plcGroups: [...plcGroups, val]
+    };
+    const success = await onUpdateSettings(updated);
+    if (success) {
+      setNewPlcGroupOption('');
+      setSelectedPlcGroup(val);
+      alert('เพิ่มตัวเลือกกลุ่ม PLC เรียบร้อย');
+    }
+  };
+
+  const handleDeletePlcGroupOption = async (group) => {
+    const plcGroups = settings.plcGroups || [];
+    if (plcGroups.length <= 1) {
+      alert('ต้องมีตัวเลือกกลุ่ม PLC อย่างน้อย 1 รายการ');
+      return;
+    }
+    if (window.confirm(`คุณต้องการลบตัวเลือกกลุ่ม PLC: "${group}" หรือไม่?`)) {
+      const updated = {
+        ...settings,
+        plcGroups: plcGroups.filter(g => g !== group)
+      };
+      const success = await onUpdateSettings(updated);
+      if (success) {
+        if (selectedPlcGroup === group) {
+          setSelectedPlcGroup(updated.plcGroups[0] || '');
+        }
+        alert('ลบตัวเลือกกลุ่ม PLC เรียบร้อย');
       }
     }
   };
@@ -386,6 +438,14 @@ export default function AdminDashboard({
           >
             <Shield size={16} />
             รายงานสรุปผลการนิเทศ
+          </button>
+          <button 
+            className={`btn ${activeSubTab === 'plc_reports' ? 'btn-primary' : 'btn-outline'}`}
+            onClick={() => setActiveSubTab('plc_reports')}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem' }}
+          >
+            <RotateCw size={16} />
+            รายงานกิจกรรม PLC (4 วงรอบ)
           </button>
         </div>
 
@@ -974,6 +1034,22 @@ export default function AdminDashboard({
                     </div>
                   </div>
 
+                  {newRole === 'teacher' && (
+                    <div className="form-group">
+                      <label>กลุ่ม PLC</label>
+                      <select
+                        value={selectedPlcGroup}
+                        onChange={(e) => setSelectedPlcGroup(e.target.value)}
+                        style={{ padding: '0.5rem' }}
+                      >
+                        <option value="">-- ไม่จัดกลุ่ม / ยังไม่กำหนดกลุ่ม --</option>
+                        {settings.plcGroups && settings.plcGroups.map(group => (
+                          <option key={group} value={group}>{group}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
                   <div className="form-group">
                     <label>บทบาทในระบบ (Role)</label>
                     <select
@@ -1065,6 +1141,39 @@ export default function AdminDashboard({
                       </button>
                     </form>
                   </div>
+
+                  {/* PLC Groups Management */}
+                  <div>
+                    <h4 style={{ fontWeight: 700, fontSize: '13px', color: 'var(--primary-color)', marginBottom: '0.4rem' }}>3. จัดการตัวเลือกกลุ่ม PLC</h4>
+                    <div style={{ display: 'block', maxHeight: '120px', overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: '4px', padding: '0.25rem 0.5rem', backgroundColor: '#fafafa', marginBottom: '0.5rem' }}>
+                      {settings.plcGroups && settings.plcGroups.map(group => (
+                        <div key={group} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.2rem 0', borderBottom: '1px solid #eee', fontSize: '12px' }}>
+                          <span style={{ textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', maxWidth: '210px' }} title={group}>{group}</span>
+                          <button
+                            type="button"
+                            onClick={() => handleDeletePlcGroupOption(group)}
+                            style={{ border: 'none', background: 'none', color: '#e74c3c', cursor: 'pointer', fontWeight: 'bold', fontSize: '11px', padding: '0 4px' }}
+                            title="ลบตัวเลือกนี้"
+                          >
+                            ✖
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    <form onSubmit={handleAddPlcGroupOption} style={{ display: 'flex', gap: '0.25rem' }}>
+                      <input
+                        type="text"
+                        placeholder="เพิ่มกลุ่ม PLC ใหม่..."
+                        value={newPlcGroupOption}
+                        onChange={(e) => setNewPlcGroupOption(e.target.value)}
+                        style={{ padding: '4px 8px', fontSize: '12px', flex: 1, minWidth: 0 }}
+                        required
+                      />
+                      <button type="submit" className="btn btn-primary" style={{ padding: '4px 8px', fontSize: '12px', whiteSpace: 'nowrap' }}>
+                        เพิ่ม
+                      </button>
+                    </form>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1083,6 +1192,7 @@ export default function AdminDashboard({
                       <th>ชื่อ-นามสกุล</th>
                       <th>บทบาท</th>
                       <th>ตำแหน่ง / สังกัดกลุ่มสาระ</th>
+                      <th>กลุ่ม PLC</th>
                       <th>ชื่อผู้ใช้งาน</th>
                       <th>รหัสผ่าน</th>
                       <th style={{ textAlign: 'center' }}>การจัดการ</th>
@@ -1099,6 +1209,22 @@ export default function AdminDashboard({
                           </span>
                         </td>
                         <td style={{ fontSize: '13px' }}>{t.position}</td>
+                        <td>
+                          {t.role === 'admin' ? (
+                            <span style={{ fontSize: '11px', color: 'var(--text-light)', fontStyle: 'italic' }}>- ไม่ต้องจัดกลุ่ม -</span>
+                          ) : (
+                            <select
+                              value={t.plcGroup || ''}
+                              onChange={(e) => onUpdateTeacherPlc(t.id, e.target.value)}
+                              style={{ padding: '0.2rem 0.4rem', fontSize: '12px', width: '100%', minWidth: '130px' }}
+                            >
+                              <option value="">-- ยังไม่เลือกกลุ่ม --</option>
+                              {settings.plcGroups && settings.plcGroups.map(group => (
+                                <option key={group} value={group}>{group}</option>
+                              ))}
+                            </select>
+                          )}
+                        </td>
                         <td style={{ fontFamily: 'monospace', fontSize: '13px' }}>{t.username}</td>
                         <td style={{ fontFamily: 'monospace', fontSize: '13px' }}>{t.password}</td>
                         <td style={{ textAlign: 'center' }}>
@@ -1328,6 +1454,394 @@ export default function AdminDashboard({
           supervision={selectedSummarySupervision}
           onClose={() => setSelectedSummarySupervision(null)}
         />
+      )}
+
+      {activeSubTab === 'plc_reports' && (
+        <div className="card">
+          <h2 className="card-title">
+            <RotateCw />
+            รายงานผลการดำเนินกิจกรรม PLC (4 วงรอบ) ของคณะครู
+          </h2>
+
+          <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: '200px' }}>
+              <label style={{ fontWeight: 600, fontSize: '13px' }}>กรองตามกลุ่ม PLC</label>
+              <select
+                value={plcFilterGroup}
+                onChange={(e) => setPlcFilterGroup(e.target.value)}
+                style={{ padding: '0.5rem', fontSize: '13px' }}
+              >
+                <option value="">-- แสดงทุกกลุ่ม PLC --</option>
+                {settings.plcGroups && settings.plcGroups.map(g => (
+                  <option key={g} value={g}>{g}</option>
+                ))}
+              </select>
+            </div>
+            <div style={{ flex: 2, minWidth: '250px' }}>
+              <label style={{ fontWeight: 600, fontSize: '13px' }}>ค้นหาคุณครู</label>
+              <input
+                type="text"
+                placeholder="พิมพ์ชื่อคุณครูที่ต้องการค้นหา..."
+                value={plcFilterSearch}
+                onChange={(e) => setPlcFilterSearch(e.target.value)}
+                style={{ padding: '0.5rem', fontSize: '13px' }}
+              />
+            </div>
+          </div>
+
+          <div className="table-responsive">
+            <table>
+              <thead>
+                <tr>
+                  <th>ชื่อ-นามสกุลครูผู้สอน</th>
+                  <th>กลุ่ม PLC</th>
+                  <th style={{ textAlign: 'center', width: '100px' }}>วงรอบที่ 1</th>
+                  <th style={{ textAlign: 'center', width: '100px' }}>วงรอบที่ 2</th>
+                  <th style={{ textAlign: 'center', width: '100px' }}>วงรอบที่ 3</th>
+                  <th style={{ textAlign: 'center', width: '100px' }}>วงรอบที่ 4</th>
+                  <th style={{ textAlign: 'center', width: '120px' }}>การดำเนินงาน</th>
+                </tr>
+              </thead>
+              <tbody>
+                {teachers
+                  .filter(t => t.role === 'teacher')
+                  .filter(t => !plcFilterGroup || t.plcGroup === plcFilterGroup)
+                  .filter(t => !plcFilterSearch || t.name.toLowerCase().includes(plcFilterSearch.toLowerCase()))
+                  .map(teacher => {
+                    const teacherLogs = plcLogs.filter(log => log.teacherId === teacher.id);
+                    const cycle1 = teacherLogs.find(log => Number(log.cycle) === 1);
+                    const cycle2 = teacherLogs.find(log => Number(log.cycle) === 2);
+                    const cycle3 = teacherLogs.find(log => Number(log.cycle) === 3);
+                    const cycle4 = teacherLogs.find(log => Number(log.cycle) === 4);
+
+                    return (
+                      <tr key={teacher.id}>
+                        <td style={{ fontWeight: 600 }}>{teacher.name}</td>
+                        <td style={{ fontSize: '13px' }}>{teacher.plcGroup || <span style={{ color: 'var(--text-light)', fontStyle: 'italic' }}>ยังไม่ได้จัดกลุ่ม</span>}</td>
+                        
+                        <td style={{ textAlign: 'center' }}>
+                          {cycle1 ? (
+                            <button
+                              onClick={() => setSelectedPlcLogDetail(cycle1)}
+                              className="badge badge-approved"
+                              style={{ border: 'none', cursor: 'pointer', padding: '0.3rem 0.6rem' }}
+                              title="คลิกเพื่อดูรายละเอียด"
+                            >
+                              ✓ บันทึกแล้ว
+                            </button>
+                          ) : (
+                            <span style={{ color: 'var(--text-light)', fontSize: '11px', fontStyle: 'italic' }}>ยังไม่บันทึก</span>
+                          )}
+                        </td>
+                        
+                        <td style={{ textAlign: 'center' }}>
+                          {cycle2 ? (
+                            <button
+                              onClick={() => setSelectedPlcLogDetail(cycle2)}
+                              className="badge badge-approved"
+                              style={{ border: 'none', cursor: 'pointer', padding: '0.3rem 0.6rem' }}
+                              title="คลิกเพื่อดูรายละเอียด"
+                            >
+                              ✓ บันทึกแล้ว
+                            </button>
+                          ) : (
+                            <span style={{ color: 'var(--text-light)', fontSize: '11px', fontStyle: 'italic' }}>ยังไม่บันทึก</span>
+                          )}
+                        </td>
+                        
+                        <td style={{ textAlign: 'center' }}>
+                          {cycle3 ? (
+                            <button
+                              onClick={() => setSelectedPlcLogDetail(cycle3)}
+                              className="badge badge-approved"
+                              style={{ border: 'none', cursor: 'pointer', padding: '0.3rem 0.6rem' }}
+                              title="คลิกเพื่อดูรายละเอียด"
+                            >
+                              ✓ บันทึกแล้ว
+                            </button>
+                          ) : (
+                            <span style={{ color: 'var(--text-light)', fontSize: '11px', fontStyle: 'italic' }}>ยังไม่บันทึก</span>
+                          )}
+                        </td>
+                        
+                        <td style={{ textAlign: 'center' }}>
+                          {cycle4 ? (
+                            <button
+                              onClick={() => setSelectedPlcLogDetail(cycle4)}
+                              className="badge badge-approved"
+                              style={{ border: 'none', cursor: 'pointer', padding: '0.3rem 0.6rem' }}
+                              title="คลิกเพื่อดูรายละเอียด"
+                            >
+                              ✓ บันทึกแล้ว
+                            </button>
+                          ) : (
+                            <span style={{ color: 'var(--text-light)', fontSize: '11px', fontStyle: 'italic' }}>ยังไม่บันทึก</span>
+                          )}
+                        </td>
+
+                        <td style={{ textAlign: 'center' }}>
+                          <button
+                            className="btn btn-outline"
+                            style={{ padding: '0.3rem 0.5rem', fontSize: '11px', whiteSpace: 'nowrap' }}
+                            onClick={() => {
+                              setSelectedPlcTeacher(teacher);
+                            }}
+                            disabled={teacherLogs.length === 0}
+                          >
+                            🔍 ดูรายงานเต็ม
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: View Teacher PLC Full Report */}
+      {selectedPlcTeacher && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: '750px', width: '90%' }}>
+            <div className="modal-header">
+              <h3>รายงานกิจกรรม PLC เชิงลึก</h3>
+              <button className="modal-close-btn" onClick={() => setSelectedPlcTeacher(null)}>×</button>
+            </div>
+            <div className="modal-body" style={{ maxHeight: '70vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              <div style={{ backgroundColor: '#f8f9fa', padding: '0.8rem', borderRadius: 'var(--radius-sm)', fontSize: '13px', borderLeft: '4px solid var(--primary-color)' }}>
+                <div><strong>ครูผู้สอน:</strong> {selectedPlcTeacher.name}</div>
+                <div><strong>ตำแหน่ง:</strong> {selectedPlcTeacher.position}</div>
+                <div><strong>กลุ่ม PLC:</strong> {selectedPlcTeacher.plcGroup || 'ยังไม่กำหนด'}</div>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                {[
+                  { cycleNum: 1, name: 'วงรอบที่ 1: วิเคราะห์ปัญหาและกำหนดเป้าหมาย (Analyze & Goal Setting)' },
+                  { cycleNum: 2, name: 'วงรอบที่ 2: ออกแบบและพัฒนานวัตกรรมการจัดการเรียนรู้ (Design & Development)' },
+                  { cycleNum: 3, name: 'วงรอบที่ 3: ปฏิบัติการสอนและนิเทศแบบชี้แนะ (Implementation & Coaching)' },
+                  { cycleNum: 4, name: 'วงรอบที่ 4: สะท้อนผล ขยายผล และยกระดับคุณภาพ (Reflection & Scaling Up)' }
+                ].map(cycle => {
+                  const log = plcLogs.find(l => l.teacherId === selectedPlcTeacher.id && Number(l.cycle) === cycle.cycleNum);
+                  
+                  return (
+                    <div key={cycle.cycleNum} style={{ border: '1px solid #eee', borderRadius: '6px', overflow: 'hidden' }}>
+                      <div style={{ backgroundColor: log ? '#f0fdf4' : '#fafafa', padding: '0.6rem 0.8rem', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontWeight: 700, fontSize: '13px', color: log ? 'var(--status-approved)' : 'var(--text-medium)' }}>
+                          {cycle.name}
+                        </span>
+                        <span className={`badge badge-${log ? 'approved' : 'pending'}`} style={{ fontSize: '11px' }}>
+                          {log ? '✓ บันทึกผลแล้ว' : 'ยังไม่บันทึก'}
+                        </span>
+                      </div>
+                      
+                      {log ? (
+                        <div style={{ padding: '0.8rem', fontSize: '13px', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', borderBottom: '1px dashed #eee', paddingBottom: '0.4rem' }}>
+                            <div><strong>วัน-เวลา:</strong> {log.date}</div>
+                            <div><strong>สถานที่:</strong> {log.location}</div>
+                          </div>
+                          <div style={{ borderBottom: '1px dashed #eee', paddingBottom: '0.4rem' }}>
+                            <strong>สมาชิกที่เข้าร่วม:</strong>
+                            <div style={{ color: 'var(--text-medium)', marginTop: '0.1rem' }}>{log.members}</div>
+                          </div>
+                          <div style={{ borderBottom: log.images && log.images.length > 0 ? '1px dashed #eee' : 'none', paddingBottom: log.images && log.images.length > 0 ? '0.4rem' : '0' }}>
+                            <strong>ผลการดำเนินงาน PLC:</strong>
+                            <div style={{ color: 'var(--text-dark)', marginTop: '0.1rem', whiteSpace: 'pre-wrap' }}>{log.outcome}</div>
+                          </div>
+                          {log.images && log.images.length > 0 && (
+                            <div>
+                              <strong>📷 ภาพกิจกรรม:</strong>
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', gap: '6px', marginTop: '0.25rem' }}>
+                                {log.images.map((img, idx) => (
+                                  <div 
+                                    key={idx} 
+                                    onClick={() => setActivePlcLightboxImage(img)}
+                                    style={{ 
+                                      position: 'relative', 
+                                      width: '100%', 
+                                      aspectRatio: '4/3', 
+                                      borderRadius: '4px', 
+                                      overflow: 'hidden', 
+                                      border: '1px solid #cbd5e1', 
+                                      cursor: 'pointer' 
+                                    }}
+                                  >
+                                    <img src={img} alt="PLC log detail thumbnail" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--text-light)', fontSize: '13px', fontStyle: 'italic' }}>
+                          ยังไม่มีการบันทึกกิจกรรมสำหรับวงรอบนี้
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-primary" onClick={() => setSelectedPlcTeacher(null)}>ปิดหน้าต่าง</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: View Single PLC Log Detail */}
+      {selectedPlcLogDetail && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: '550px', width: '90%' }}>
+            <div className="modal-header">
+              <h3>รายละเอียดบันทึกกิจกรรม PLC</h3>
+              <button className="modal-close-btn" onClick={() => setSelectedPlcLogDetail(null)}>×</button>
+            </div>
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem', fontSize: '13.5px' }}>
+              <div style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>
+                <span style={{ fontSize: '11px', color: 'var(--text-medium)', fontWeight: 600 }}>ครูผู้บันทึก</span>
+                <p style={{ fontWeight: 700, color: 'var(--primary-color)' }}>{selectedPlcLogDetail.teacherName}</p>
+              </div>
+
+              <div>
+                <span style={{ fontSize: '11px', color: 'var(--text-medium)', fontWeight: 600 }}>วงรอบกิจกรรม PLC</span>
+                <p style={{ fontWeight: 600 }}>
+                  วงรอบที่ {selectedPlcLogDetail.cycle}: {
+                    Number(selectedPlcLogDetail.cycle) === 1 ? 'วิเคราะห์ปัญหาและกำหนดเป้าหมาย' :
+                    Number(selectedPlcLogDetail.cycle) === 2 ? 'ออกแบบและพัฒนานวัตกรรมการจัดการเรียนรู้' :
+                    Number(selectedPlcLogDetail.cycle) === 3 ? 'ปฏิบัติการสอนและนิเทศแบบชี้แนะ' : 'สะท้อนผล ขยายผล และยกระดับคุณภาพ'
+                  }
+                </p>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                <div>
+                  <span style={{ fontSize: '11px', color: 'var(--text-medium)', fontWeight: 600 }}>วัน-เวลา</span>
+                  <p style={{ fontWeight: 600 }}>{selectedPlcLogDetail.date}</p>
+                </div>
+                <div>
+                  <span style={{ fontSize: '11px', color: 'var(--text-medium)', fontWeight: 600 }}>สถานที่</span>
+                  <p style={{ fontWeight: 600 }}>{selectedPlcLogDetail.location}</p>
+                </div>
+              </div>
+
+              <div>
+                <span style={{ fontSize: '11px', color: 'var(--text-medium)', fontWeight: 600 }}>สมาชิกผู้ร่วมกิจกรรม</span>
+                <p style={{ color: 'var(--text-dark)' }}>{selectedPlcLogDetail.members}</p>
+              </div>
+
+              <div>
+                <span style={{ fontSize: '11px', color: 'var(--text-medium)', fontWeight: 600 }}>ผลการดำเนินงาน PLC</span>
+                <div style={{ whiteSpace: 'pre-wrap', backgroundColor: '#f8f9fa', padding: '0.6rem', borderRadius: '4px', border: '1px solid #eee', color: 'var(--text-dark)', marginTop: '0.25rem' }}>
+                  {selectedPlcLogDetail.outcome}
+                </div>
+              </div>
+
+              {selectedPlcLogDetail.images && selectedPlcLogDetail.images.length > 0 && (
+                <div>
+                  <span style={{ fontSize: '11px', color: 'var(--text-medium)', fontWeight: 600 }}>📷 ภาพหลักฐาน:</span>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', gap: '8px', marginTop: '0.25rem' }}>
+                    {selectedPlcLogDetail.images.map((img, idx) => (
+                      <div 
+                        key={idx} 
+                        onClick={() => setActivePlcLightboxImage(img)}
+                        style={{ 
+                          position: 'relative', 
+                          width: '100%', 
+                          aspectRatio: '4/3', 
+                          borderRadius: '4px', 
+                          overflow: 'hidden', 
+                          border: '1px solid #cbd5e1', 
+                          cursor: 'pointer' 
+                        }}
+                      >
+                        <img src={img} alt="PLC log detail thumbnail" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="modal-footer" style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
+              <button 
+                className="btn btn-danger" 
+                onClick={async () => {
+                  if (window.confirm('คุณต้องการลบบันทึกกิจกรรม PLC วงรอบนี้ใช่หรือไม่?')) {
+                    const success = await onDeletePlcLog(selectedPlcLogDetail.id);
+                    if (success) {
+                      alert('ลบบันทึกกิจกรรมสำเร็จ');
+                      setSelectedPlcLogDetail(null);
+                    } else {
+                      alert('เกิดข้อผิดพลาด');
+                    }
+                  }
+                }}
+                style={{ padding: '0.4rem 0.8rem', fontSize: '12px' }}
+              >
+                ลบบันทึกนี้
+              </button>
+              <button className="btn btn-primary" onClick={() => setSelectedPlcLogDetail(null)}>ปิดหน้าต่าง</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Lightbox for PLC Photos */}
+      {activePlcLightboxImage && (
+        <div 
+          onClick={() => setActivePlcLightboxImage(null)}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100vw',
+            height: '100vh',
+            backgroundColor: 'rgba(0, 0, 0, 0.85)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            cursor: 'pointer'
+          }}
+        >
+          <button
+            onClick={() => setActivePlcLightboxImage(null)}
+            style={{
+              position: 'absolute',
+              top: '20px',
+              right: '20px',
+              backgroundColor: 'rgba(255,255,255,0.2)',
+              border: 'none',
+              borderRadius: '50%',
+              width: '40px',
+              height: '40px',
+              color: 'white',
+              fontSize: '24px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              lineHeight: 1
+            }}
+          >
+            ×
+          </button>
+          <img 
+            src={activePlcLightboxImage} 
+            alt="PLC Expanded Photo" 
+            style={{ 
+              maxWidth: '90%', 
+              maxHeight: '85%', 
+              objectFit: 'contain',
+              borderRadius: '4px',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+              cursor: 'default'
+            }} 
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
       )}
     </div>
   );

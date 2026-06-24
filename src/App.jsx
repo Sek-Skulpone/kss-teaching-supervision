@@ -40,7 +40,12 @@ import {
   updateTermPlan,
   deleteTermPlan,
   getSystemSettings,
-  updateSystemSettings
+  updateSystemSettings,
+  getPlcLogs,
+  addPlcLog,
+  updatePlcLog,
+  deletePlcLog,
+  updateTeacherPlcGroup
 } from './db';
 
 export default function App() {
@@ -59,6 +64,7 @@ export default function App() {
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [selectedEvalSupervision, setSelectedEvalSupervision] = useState(null);
   const [selectedSummarySupervision, setSelectedSummarySupervision] = useState(null);
+  const [plcLogs, setPlcLogs] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
 
   // Initialize and load session on mount
@@ -71,16 +77,18 @@ export default function App() {
     const loadData = async () => {
       setIsLoading(true);
       try {
-        const [usersData, supervisionsData, termPlansData, settingsData] = await Promise.all([
+        const [usersData, supervisionsData, termPlansData, settingsData, plcLogsData] = await Promise.all([
           getUsers(),
           getSupervisions(),
           getTermPlans(),
-          getSystemSettings()
+          getSystemSettings(),
+          getPlcLogs()
         ]);
         setTeachers(usersData);
         setSupervisions(supervisionsData);
         setTermPlans(termPlansData);
         setSettings(settingsData);
+        setPlcLogs(plcLogsData || []);
       } catch (e) {
         console.error("Error loading initial data from database:", e);
       } finally {
@@ -125,6 +133,19 @@ export default function App() {
       return data;
     } catch (e) {
       console.error("Error refreshing term plans:", e);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const refreshPlcLogsData = async () => {
+    setIsLoading(true);
+    try {
+      const data = await getPlcLogs();
+      setPlcLogs(data || []);
+      return data;
+    } catch (e) {
+      console.error("Error refreshing plc logs:", e);
     } finally {
       setIsLoading(false);
     }
@@ -429,6 +450,79 @@ export default function App() {
     }
   };
 
+  const handleUpdateTeacherPlc = async (teacherId, plcGroup) => {
+    setIsLoading(true);
+    try {
+      const success = await updateTeacherPlcGroup(teacherId, plcGroup);
+      if (success) {
+        await refreshTeachersData();
+        if (currentUser && currentUser.id === teacherId) {
+          const updatedUser = { ...currentUser, plcGroup };
+          setCurrentUser(updatedUser);
+          localStorage.setItem('ks_current_user', JSON.stringify(updatedUser));
+        }
+        return true;
+      }
+      return false;
+    } catch (e) {
+      console.error(e);
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleAddPlcLog = async (logData) => {
+    setIsLoading(true);
+    try {
+      const success = await addPlcLog(logData);
+      if (success) {
+        await refreshPlcLogsData();
+        return true;
+      }
+      return false;
+    } catch (e) {
+      console.error(e);
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleUpdatePlcLog = async (logId, updatedFields) => {
+    setIsLoading(true);
+    try {
+      const success = await updatePlcLog(logId, updatedFields);
+      if (success) {
+        await refreshPlcLogsData();
+        return true;
+      }
+      return false;
+    } catch (e) {
+      console.error(e);
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleDeletePlcLog = async (logId) => {
+    setIsLoading(true);
+    try {
+      const success = await deletePlcLog(logId);
+      if (success) {
+        await refreshPlcLogsData();
+        return true;
+      }
+      return false;
+    } catch (e) {
+      console.error(e);
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // Format Date to Thai style (e.g. 17 มิถุนายน 2569)
   const formatThaiDateFull = (dateStr) => {
     if (!dateStr) return '';
@@ -603,6 +697,9 @@ export default function App() {
               onUpdateSupervision={handleUpdateSupervision}
               settings={settings}
               onUpdateSettings={handleUpdateSettings}
+              onUpdateTeacherPlc={handleUpdateTeacherPlc}
+              plcLogs={plcLogs}
+              onDeletePlcLog={handleDeletePlcLog}
             />
           ) : (
             <TeacherDashboard
@@ -617,6 +714,11 @@ export default function App() {
               onRegisterTermPlan={handleRegisterTermPlan}
               onUpdateTermPlan={handleUpdateTermPlan}
               onDeleteTermPlan={handleDeleteTermPlan}
+              teachers={teachers}
+              plcLogs={plcLogs}
+              onAddPlcLog={handleAddPlcLog}
+              onUpdatePlcLog={handleUpdatePlcLog}
+              onDeletePlcLog={handleDeletePlcLog}
             />
           )
         )}
