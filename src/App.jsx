@@ -45,7 +45,8 @@ import {
   addPlcLog,
   updatePlcLog,
   deletePlcLog,
-  updateTeacherPlcGroup
+  updateTeacherPlcGroup,
+  updateTeacher
 } from './db';
 
 export default function App() {
@@ -473,6 +474,28 @@ export default function App() {
     }
   };
 
+  const handleUpdateTeacher = async (teacherId, updatedFields) => {
+    setIsLoading(true);
+    try {
+      const success = await updateTeacher(teacherId, updatedFields);
+      if (success) {
+        await refreshTeachersData();
+        if (currentUser && currentUser.id === teacherId) {
+          const updatedUser = { ...currentUser, ...updatedFields };
+          setCurrentUser(updatedUser);
+          localStorage.setItem('ks_current_user', JSON.stringify(updatedUser));
+        }
+        return true;
+      }
+      return false;
+    } catch (e) {
+      console.error(e);
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleAddPlcLog = async (logData) => {
     setIsLoading(true);
     try {
@@ -699,6 +722,7 @@ export default function App() {
               settings={settings}
               onUpdateSettings={handleUpdateSettings}
               onUpdateTeacherPlc={handleUpdateTeacherPlc}
+              onUpdateTeacher={handleUpdateTeacher}
               plcLogs={plcLogs}
               onDeletePlcLog={handleDeletePlcLog}
             />

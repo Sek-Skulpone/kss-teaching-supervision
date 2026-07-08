@@ -182,6 +182,19 @@ export const deleteTeacher = async (teacherId) => {
   return success;
 };
 
+export const updateTeacher = async (teacherId, updatedFields) => {
+  const dbData = await ensureDBLoaded();
+  dbData.teachers = dbData.teachers.map(t => {
+    if (t.id === teacherId) {
+      return { ...t, ...updatedFields };
+    }
+    return t;
+  });
+  const success = await saveCollection('teachers', dbData.teachers);
+  return success;
+};
+
+
 /* ==========================================================================
    2. SUPERVISION BOOKINGS
    ========================================================================== */

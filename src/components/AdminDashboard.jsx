@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { AlertCircle, CheckCircle2, UserCheck, Eye, ClipboardList, Trash2, Calendar as CalendarIcon, Users, UserPlus, Shield, RotateCw } from 'lucide-react';
+import { AlertCircle, CheckCircle2, UserCheck, Eye, ClipboardList, Trash2, Calendar as CalendarIcon, Users, UserPlus, Shield, RotateCw, Edit } from 'lucide-react';
 import EvaluationModal from './EvaluationModal';
 import EvaluationSummaryModal from './EvaluationSummaryModal';
 
@@ -23,6 +23,7 @@ export default function AdminDashboard({
   onRejectVolunteer,
   onAddTeacher,
   onDeleteTeacher,
+  onUpdateTeacher,
   onUpdateSupervision,
   settings = { positions: [], departments: [] },
   onUpdateSettings,
@@ -57,6 +58,16 @@ export default function AdminDashboard({
   const [selectedDepartment, setSelectedDepartment] = useState('');
   const [newRole, setNewRole] = useState('teacher');
   const [addError, setAddError] = useState('');
+
+  // Form states for editing teacher
+  const [editingTeacher, setEditingTeacher] = useState(null);
+  const [editName, setEditName] = useState('');
+  const [editPosition, setEditPosition] = useState('');
+  const [editUsername, setEditUsername] = useState('');
+  const [editPassword, setEditPassword] = useState('');
+  const [editRole, setEditRole] = useState('teacher');
+  const [editPlcGroup, setEditPlcGroup] = useState('');
+  const [editError, setEditError] = useState('');
 
   // Settings management states
   const [newPositionOption, setNewPositionOption] = useState('');
@@ -153,6 +164,52 @@ export default function AdminDashboard({
       setAddError('เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง');
     }
   };
+
+  const handleEditTeacherClick = (teacher) => {
+    setEditingTeacher(teacher);
+    setEditName(teacher.name || '');
+    setEditPosition(teacher.position || '');
+    setEditUsername(teacher.username || '');
+    setEditPassword(teacher.password || '');
+    setEditRole(teacher.role || 'teacher');
+    setEditPlcGroup(teacher.plcGroup || '');
+    setEditError('');
+  };
+
+  const handleEditTeacherSubmit = async (e) => {
+    e.preventDefault();
+    setEditError('');
+
+    const formattedUsername = editUsername.trim().toLowerCase();
+    if (!formattedUsername || !editPassword || !editName || !editPosition) {
+      setEditError('กรุณากรอกข้อมูลให้ครบทุกช่อง');
+      return;
+    }
+
+    // Duplicate username validation (excluding the current editing teacher)
+    const exists = teachers.some(t => t.id !== editingTeacher.id && t.username.toLowerCase() === formattedUsername);
+    if (exists) {
+      setEditError('ชื่อผู้ใช้งานนี้มีอยู่ในระบบแล้ว กรุณาใช้ชื่ออื่น');
+      return;
+    }
+
+    const success = await onUpdateTeacher(editingTeacher.id, {
+      name: editName.trim(),
+      position: editPosition.trim(),
+      username: formattedUsername,
+      password: editPassword.trim(),
+      role: editRole,
+      plcGroup: editRole === 'teacher' ? editPlcGroup : ''
+    });
+
+    if (success) {
+      alert('แก้ไขข้อมูลบุคลากรสำเร็จเรียบร้อยแล้ว');
+      setEditingTeacher(null);
+    } else {
+      setEditError('เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง');
+    }
+  };
+
 
   const handleAddPositionOption = async (e) => {
     e.preventDefault();
@@ -1248,7 +1305,14 @@ export default function AdminDashboard({
                         </td>
                         <td style={{ fontFamily: 'monospace', fontSize: '13px' }}>{t.username}</td>
                         <td style={{ fontFamily: 'monospace', fontSize: '13px' }}>{t.password}</td>
-                        <td style={{ textAlign: 'center' }}>
+                        <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
+                          <button
+                            className="btn btn-outline"
+                            style={{ padding: '0.25rem 0.5rem', fontSize: '11px', color: 'var(--primary-color)', borderColor: 'var(--primary-color)', display: 'inline-flex', gap: '0.25rem', alignItems: 'center', marginRight: '0.35rem' }}
+                            onClick={() => handleEditTeacherClick(t)}
+                          >
+                            <Edit size={12} /> แก้ไข
+                          </button>
                           <button
                             className="btn btn-outline btn-danger"
                             style={{ padding: '0.25rem 0.5rem', fontSize: '11px', color: '#e74c3c', borderColor: '#e74c3c', display: 'inline-flex', gap: '0.25rem', alignItems: 'center' }}
@@ -1264,6 +1328,126 @@ export default function AdminDashboard({
                 </table>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Teacher Profile Modal */}
+      {editingTeacher && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: '500px' }}>
+            <div className="modal-header">
+              <h3>⚙️ แก้ไขข้อมูลบุคลากร</h3>
+              <button className="modal-close-btn" onClick={() => setEditingTeacher(null)}>×</button>
+            </div>
+            <form onSubmit={handleEditTeacherSubmit}>
+              <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                {editError && (
+                  <div style={{ backgroundColor: '#fde8e8', color: '#e74c3c', padding: '0.75rem', borderRadius: 'var(--radius-sm)', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                    <AlertCircle size={14} />
+                    {editError}
+                  </div>
+                )}
+                
+                <div className="form-group">
+                  <label style={{ fontWeight: 600, display: 'block', marginBottom: '0.25rem' }}>ชื่อ-นามสกุล</label>
+                  <input
+                    type="text"
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    style={{ width: '100%', padding: '0.5rem' }}
+                    required
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label style={{ fontWeight: 600, display: 'block', marginBottom: '0.25rem' }}>ตำแหน่ง</label>
+                  <input
+                    type="text"
+                    value={editPosition}
+                    onChange={(e) => setEditPosition(e.target.value)}
+                    placeholder="ระบุตำแหน่ง เช่น ผู้อำนวยการโรงเรียน"
+                    style={{ width: '100%', padding: '0.5rem' }}
+                    required
+                  />
+                  <div style={{ marginTop: '0.35rem' }}>
+                    <span style={{ fontSize: '11px', color: 'var(--text-light)', display: 'block', marginBottom: '0.2rem' }}>
+                      เลือกด่วนจากระบบ:
+                    </span>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>
+                      {settings.positions && settings.positions.map(pos => (
+                        <button
+                          key={pos}
+                          type="button"
+                          className="btn btn-outline"
+                          style={{ padding: '0.15rem 0.4rem', fontSize: '10px', margin: 0, border: '1px solid var(--border-color)', borderRadius: '4px', background: '#fafafa', color: 'var(--text-medium)', cursor: 'pointer' }}
+                          onClick={() => setEditPosition(pos)}
+                        >
+                          {pos}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                  <div className="form-group">
+                    <label style={{ fontWeight: 600, display: 'block', marginBottom: '0.25rem' }}>ชื่อผู้ใช้งาน (Username)</label>
+                    <input
+                      type="text"
+                      value={editUsername}
+                      onChange={(e) => setEditUsername(e.target.value)}
+                      disabled={editingTeacher.username === 'academic' || editingTeacher.username === 'admin'}
+                      style={{ width: '100%', padding: '0.5rem', backgroundColor: (editingTeacher.username === 'academic' || editingTeacher.username === 'admin') ? '#f3f4f6' : 'white' }}
+                      required
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label style={{ fontWeight: 600, display: 'block', marginBottom: '0.25rem' }}>รหัสผ่าน (Password)</label>
+                    <input
+                      type="text"
+                      value={editPassword}
+                      onChange={(e) => setEditPassword(e.target.value)}
+                      style={{ width: '100%', padding: '0.5rem' }}
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label style={{ fontWeight: 600, display: 'block', marginBottom: '0.25rem' }}>บทบาทในระบบ (Role)</label>
+                  <select
+                    value={editRole}
+                    onChange={(e) => setEditRole(e.target.value)}
+                    disabled={editingTeacher.username === 'academic' || editingTeacher.username === 'admin'}
+                    style={{ width: '100%', padding: '0.5rem', backgroundColor: (editingTeacher.username === 'academic' || editingTeacher.username === 'admin') ? '#f3f4f6' : 'white' }}
+                  >
+                    <option value="teacher">ครูผู้สอนทั่วไป (Teacher)</option>
+                    <option value="admin">ผู้นิเทศ/ผู้บริหาร/ฝ่ายวิชาการ (Admin)</option>
+                  </select>
+                </div>
+
+                {editRole === 'teacher' && (
+                  <div className="form-group">
+                    <label style={{ fontWeight: 600, display: 'block', marginBottom: '0.25rem' }}>กลุ่ม PLC</label>
+                    <select
+                      value={editPlcGroup}
+                      onChange={(e) => setEditPlcGroup(e.target.value)}
+                      style={{ width: '100%', padding: '0.5rem' }}
+                    >
+                      <option value="">-- ไม่จัดกลุ่ม / ยังไม่กำหนดกลุ่ม --</option>
+                      {settings.plcGroups && settings.plcGroups.map(group => (
+                        <option key={group} value={group}>{group}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+              <div className="modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', borderTop: '1px solid var(--border-color)', padding: '1rem', marginTop: '1rem' }}>
+                <button type="button" className="btn btn-outline" style={{ padding: '0.5rem 1rem' }} onClick={() => setEditingTeacher(null)}>ยกเลิก</button>
+                <button type="submit" className="btn btn-primary" style={{ padding: '0.5rem 1rem' }}>บันทึกการแก้ไข</button>
+              </div>
+            </form>
           </div>
         </div>
       )}
