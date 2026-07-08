@@ -135,6 +135,12 @@ export default function TeacherDashboard({
   // C. Post Lesson Record for Term Plan States
   const [selectedTermPlan, setSelectedTermPlan] = useState(null);
   const [postLessonOutcome, setPostLessonOutcome] = useState('');
+  const [postLessonType, setPostLessonType] = useState('pdf'); // 'pdf' | 'link'
+  const [postLessonFile, setPostLessonFile] = useState(''); // base64
+  const [postLessonLink, setPostLessonLink] = useState('');
+  const [postLessonFileName, setPostLessonFileName] = useState('');
+  const [postLessonFileError, setPostLessonFileError] = useState('');
+  const [isProcessingPostLessonFile, setIsProcessingPostLessonFile] = useState(false);
 
   // D. Classroom Evaluation Form States
   const [selectedEvalSupervision, setSelectedEvalSupervision] = useState(null);
@@ -163,6 +169,53 @@ export default function TeacherDashboard({
   const [onePageLink, setOnePageLink] = useState('');
   const [onePageError, setOnePageError] = useState('');
   const [isProcessingOnePage, setIsProcessingOnePage] = useState(false);
+
+  const handleOpenPostLessonModal = (plan) => {
+    setSelectedTermPlan(plan);
+    setPostLessonType(plan.postLessonRecord?.type || 'pdf');
+    setPostLessonFile(plan.postLessonRecord?.type === 'pdf' ? plan.postLessonRecord.fileData : '');
+    setPostLessonLink(plan.postLessonRecord?.type === 'link' ? plan.postLessonRecord.fileUrl : '');
+    setPostLessonFileName(plan.postLessonRecord?.type === 'pdf' ? 'ไฟล์เดิมที่อัปโหลดไว้.pdf' : '');
+    setPostLessonOutcome(plan.postLessonRecord?.outcome || '');
+    setPostLessonFileError('');
+  };
+
+  const handlePostLessonFileChange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setPostLessonFileError('');
+    setIsProcessingPostLessonFile(true);
+
+    try {
+      if (file.type === 'application/pdf') {
+        const MAX_PDF_SIZE = 500 * 1024; // 500KB
+        if (file.size > MAX_PDF_SIZE) {
+          setPostLessonFileError('ไฟล์ PDF มีขนาดใหญ่เกินไป (ต้องไม่เกิน 500KB) กรุณาใช้ไฟล์ภาพหรือแนบลิงก์ Google Drive แทนครับ');
+          e.target.value = '';
+          setIsProcessingPostLessonFile(false);
+          return;
+        }
+
+        const dataUrl = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.readAsDataURL(file);
+          reader.onload = (e) => resolve(e.target.result);
+          reader.onerror = reject;
+        });
+        setPostLessonFile(dataUrl);
+        setPostLessonFileName(file.name);
+      } else {
+        setPostLessonFileError('ไม่รองรับประเภทไฟล์นี้ กรุณาเลือกไฟล์ PDF เท่านั้นครับ');
+        e.target.value = '';
+      }
+    } catch (err) {
+      console.error(err);
+      setPostLessonFileError('เกิดข้อผิดพลาดในการประมวลผลไฟล์');
+    } finally {
+      setIsProcessingPostLessonFile(false);
+    }
+  };
 
   const handleOnePageFileChange = async (e) => {
     const file = e.target.files[0];
@@ -501,22 +554,41 @@ export default function TeacherDashboard({
   // Handle Post Lesson Feedback Submit
   const handlePostLessonSubmit = async (e) => {
     e.preventDefault();
-    if (!postLessonOutcome) {
-      alert('กรุณากรอกข้อเสนอแนะ/บันทึกหลังสอน');
-      return;
+
+    let recordData = {};
+
+    if (postLessonType === 'pdf') {
+      if (!postLessonFile) {
+        alert('กรุณาเลือกไฟล์ PDF ที่ต้องการอัปโหลด');
+        return;
+      }
+      recordData = {
+        type: 'pdf',
+        fileData: postLessonFile,
+        submittedAt: new Date().toISOString()
+      };
+    } else {
+      if (!postLessonLink.trim()) {
+        alert('กรุณากรอกลิงก์ Google Drive หรือเว็บไซต์');
+        return;
+      }
+      recordData = {
+        type: 'link',
+        fileUrl: postLessonLink.trim(),
+        submittedAt: new Date().toISOString()
+      };
     }
 
     const success = await onUpdateTermPlan(selectedTermPlan.id, {
-      postLessonRecord: {
-        outcome: postLessonOutcome,
-        submittedAt: new Date().toISOString()
-      }
+      postLessonRecord: recordData
     });
 
     if (success) {
       alert('บันทึกหลังแผนการจัดการเรียนรู้สำเร็จเรียบร้อยแล้ว');
       setSelectedTermPlan(null);
-      setPostLessonOutcome('');
+      setPostLessonFile('');
+      setPostLessonLink('');
+      setPostLessonFileName('');
     } else {
       alert('เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง');
     }
@@ -823,16 +895,42 @@ export default function TeacherDashboard({
                           </a>
                         </td>
                         <td>
-                          <button
-                            className="btn btn-secondary"
-                            style={{ padding: '0.2rem 0.5rem', fontSize: '11px', whiteSpace: 'nowrap' }}
-                            onClick={() => {
-                              setSelectedTermPlan(plan);
-                              setPostLessonOutcome(plan.postLessonRecord?.outcome || '');
-                            }}
-                          >
-                            {plan.postLessonRecord ? 'ดู/แก้ไขหลังแผน' : 'เขียนหลังแผน'}
-                          </button>
+                          {plan.postLessonRecord ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                              <button
+                                type="button"
+                                className="btn btn-outline"
+                                style={{ padding: '0.2rem 0.4rem', fontSize: '11px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '0.2rem', whiteSpace: 'nowrap' }}
+                                onClick={() => {
+                                  if (plan.postLessonRecord.type === 'pdf') {
+                                    const newWindow = window.open();
+                                    newWindow.document.write(`<iframe src="${plan.postLessonRecord.fileData}" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`);
+                                  } else if (plan.postLessonRecord.type === 'link') {
+                                    window.open(plan.postLessonRecord.fileUrl, '_blank');
+                                  } else {
+                                    alert(`บันทึกหลังสอน (ข้อความ):\n\n${plan.postLessonRecord.outcome}`);
+                                  }
+                                }}
+                              >
+                                📄 เปิดดูหลังแผน
+                              </button>
+                              <button
+                                className="btn btn-outline btn-secondary"
+                                style={{ padding: '0.15rem 0.3rem', fontSize: '10px' }}
+                                onClick={() => handleOpenPostLessonModal(plan)}
+                              >
+                                แก้ไขบันทึก
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              className="btn btn-secondary"
+                              style={{ padding: '0.2rem 0.5rem', fontSize: '11px', whiteSpace: 'nowrap' }}
+                              onClick={() => handleOpenPostLessonModal(plan)}
+                            >
+                              เขียนหลังแผน
+                            </button>
+                          )}
                         </td>
                         <td style={{ textAlign: 'center' }}>
                           <button
@@ -860,26 +958,80 @@ export default function TeacherDashboard({
                   <button className="modal-close-btn" onClick={() => setSelectedTermPlan(null)}>×</button>
                 </div>
                 <form onSubmit={handlePostLessonSubmit}>
-                  <div className="modal-body">
-                    <div style={{ backgroundColor: 'var(--primary-light)', padding: '0.75rem', borderRadius: 'var(--radius-sm)', marginBottom: '1rem', fontSize: '13px' }}>
+                  <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    <div style={{ backgroundColor: 'var(--primary-light)', padding: '0.75rem', borderRadius: 'var(--radius-sm)', fontSize: '13px' }}>
                       <strong>รายวิชา:</strong> {selectedTermPlan.subjectCode} {selectedTermPlan.subjectName} (ชั้น ม.{selectedTermPlan.grade.replace('ม.', '')}) <br />
                       <strong>ปีการศึกษา/ภาคเรียน:</strong> {selectedTermPlan.term}/{selectedTermPlan.academicYear}
                     </div>
 
                     <div className="form-group">
-                      <label>บันทึกรายงาน/ข้อเสนอแนะหลังการจัดกิจกรรมการเรียนรู้ (Outcome)</label>
-                      <textarea
-                        rows="6"
-                        value={postLessonOutcome}
-                        onChange={(e) => setPostLessonOutcome(e.target.value)}
-                        placeholder="ระบุสรุปผลการจัดกิจกรรม ปัญหาที่พบบ่อย และข้อค้นพบ/รายงานหลังแผน..."
-                        required
-                      ></textarea>
+                      <label style={{ fontWeight: 600, display: 'block', marginBottom: '0.25rem' }}>รูปแบบการแนบบันทึกหลังแผน</label>
+                      <div style={{ display: 'flex', gap: '1rem', marginTop: '0.25rem' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontWeight: 'normal', cursor: 'pointer', fontSize: '13px' }}>
+                          <input
+                            type="radio"
+                            name="postLessonType"
+                            value="pdf"
+                            checked={postLessonType === 'pdf'}
+                            onChange={() => setPostLessonType('pdf')}
+                          />
+                          อัปโหลดไฟล์ PDF (ไม่เกิน 500KB)
+                        </label>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontWeight: 'normal', cursor: 'pointer', fontSize: '13px' }}>
+                          <input
+                            type="radio"
+                            name="postLessonType"
+                            value="link"
+                            checked={postLessonType === 'link'}
+                            onChange={() => setPostLessonType('link')}
+                          />
+                          แนบลิงก์ Google Drive / เว็บไซต์
+                        </label>
+                      </div>
                     </div>
+
+                    {postLessonType === 'pdf' ? (
+                      <div className="form-group">
+                        <label style={{ fontWeight: 600, display: 'block', marginBottom: '0.25rem' }}>เลือกไฟล์ PDF บันทึกหลังแผน</label>
+                        <input
+                          type="file"
+                          accept="application/pdf"
+                          onChange={handlePostLessonFileChange}
+                          style={{ padding: '0.25rem', width: '100%' }}
+                        />
+                        {postLessonFileName && (
+                          <div style={{ fontSize: '12px', color: 'var(--status-completed)', marginTop: '0.35rem', fontWeight: 600 }}>
+                            ✓ ไฟล์ที่เลือก: {postLessonFileName}
+                          </div>
+                        )}
+                        {postLessonFileError && (
+                          <div style={{ fontSize: '12px', color: '#e74c3c', marginTop: '0.35rem' }}>
+                            {postLessonFileError}
+                          </div>
+                        )}
+                        {isProcessingPostLessonFile && (
+                          <div style={{ fontSize: '12px', color: 'var(--primary-color)', marginTop: '0.35rem' }}>
+                            กำลังประมวลผลไฟล์...
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="form-group">
+                        <label style={{ fontWeight: 600, display: 'block', marginBottom: '0.25rem' }}>ลิงก์บันทึกหลังแผน (Google Drive หรือ URL อื่นๆ)</label>
+                        <input
+                          type="url"
+                          value={postLessonLink}
+                          onChange={(e) => setPostLessonLink(e.target.value)}
+                          placeholder="วางลิงก์ Google Drive หรือลิงก์บันทึกหลังแผนที่นี่..."
+                          style={{ width: '100%', padding: '0.5rem' }}
+                          required
+                        />
+                      </div>
+                    )}
                   </div>
-                  <div className="modal-footer">
+                  <div className="modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
                     <button type="button" className="btn btn-outline" onClick={() => setSelectedTermPlan(null)}>ยกเลิก</button>
-                    <button type="submit" className="btn btn-primary">บันทึกข้อมูล</button>
+                    <button type="submit" className="btn btn-primary" disabled={isProcessingPostLessonFile}>บันทึกข้อมูล</button>
                   </div>
                 </form>
               </div>

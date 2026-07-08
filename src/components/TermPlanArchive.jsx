@@ -120,13 +120,30 @@ export default function TermPlanArchive({ termPlans }) {
                   </td>
                   <td>
                     {plan.postLessonRecord ? (
-                      <button
-                        className="btn btn-primary"
-                        style={{ padding: '0.25rem 0.6rem', fontSize: '12px', display: 'inline-flex', gap: '0.25rem', alignItems: 'center' }}
-                        onClick={() => setSelectedPlan(plan)}
-                      >
-                        <Eye size={12} /> เปิดอ่านบันทึกหลังแผน
-                      </button>
+                      plan.postLessonRecord.type ? (
+                        <button
+                          className="btn btn-primary"
+                          style={{ padding: '0.25rem 0.6rem', fontSize: '12px', display: 'inline-flex', gap: '0.25rem', alignItems: 'center' }}
+                          onClick={() => {
+                            if (plan.postLessonRecord.type === 'pdf') {
+                              const newWindow = window.open();
+                              newWindow.document.write(`<iframe src="${plan.postLessonRecord.fileData}" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`);
+                            } else if (plan.postLessonRecord.type === 'link') {
+                              window.open(plan.postLessonRecord.fileUrl, '_blank');
+                            }
+                          }}
+                        >
+                          <Eye size={12} /> เปิดดูหลังแผน ({plan.postLessonRecord.type === 'pdf' ? 'PDF' : 'ลิงก์'})
+                        </button>
+                      ) : (
+                        <button
+                          className="btn btn-primary"
+                          style={{ padding: '0.25rem 0.6rem', fontSize: '12px', display: 'inline-flex', gap: '0.25rem', alignItems: 'center' }}
+                          onClick={() => setSelectedPlan(plan)}
+                        >
+                          <Eye size={12} /> เปิดอ่านบันทึกหลังแผน (ข้อความ)
+                        </button>
+                      )
                     ) : (
                       <span style={{ fontSize: '12px', color: 'var(--text-light)', fontStyle: 'italic' }}>ยังไม่มีบันทึก</span>
                     )}
