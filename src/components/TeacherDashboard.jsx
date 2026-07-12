@@ -1228,138 +1228,7 @@ export default function TeacherDashboard({
             </div>
           )}
 
-          {/* Modal Write Post-Teaching Record */}
-          {selectedSupervision && (
-            <div className="modal-overlay">
-              <div className="modal-content">
-                <div className="modal-header">
-                  <h3>
-                    บันทึกรายงานผลหลังการจัดการเรียนรู้: รายวิชา {selectedSupervision.subject}
-                  </h3>
-                  <button className="modal-close-btn" onClick={() => setSelectedSupervision(null)}>×</button>
-                </div>
-                <form onSubmit={handlePostRecordSubmit}>
-                  <div className="modal-body">
-                    <div style={{ backgroundColor: 'var(--primary-light)', padding: '0.75rem', borderRadius: 'var(--radius-sm)', marginBottom: '1.25rem', fontSize: '13px' }}>
-                      <strong>ระดับชั้นเรียน:</strong> ชั้นมัธยมศึกษาปีที่ {selectedSupervision.grade.replace('ม.', '')}/{selectedSupervision.room} | 
-                      <strong> วันที่จัดกิจกรรม:</strong> {formatThaiDate(selectedSupervision.date)} เวลา {selectedSupervision.time} <br />
-                      <strong>คณะกรรมการนิเทศ:</strong> {selectedSupervision.supervisors ? selectedSupervision.supervisors.map(s => s.name).join(', ') : 'ยังไม่ระบุ'}
-                    </div>
 
-                    <div className="form-group">
-                      <label>1. ผลการจัดการเรียนรู้ (การบรรลุจุดประสงค์การเรียนรู้และสมรรถนะผู้เรียน)</label>
-                      <textarea
-                        rows="3"
-                        value={studentOutcome}
-                        onChange={(e) => setStudentOutcome(e.target.value)}
-                        placeholder="กรอกผลสำเร็จและคุณภาพของผู้เรียนจากการจัดกิจกรรมการเรียนรู้..."
-                        required
-                      ></textarea>
-                    </div>
-
-                    <div className="form-group">
-                      <label>2. ปัญหาและอุปสรรค (ด้านการจัดกิจกรรม สื่อ/อุปกรณ์ หรือพฤติกรรมผู้เรียน)</label>
-                      <textarea
-                        rows="3"
-                        value={problems}
-                        onChange={(e) => setProblems(e.target.value)}
-                        placeholder="กรอกข้อขัดข้อง ปัญหา และอุปสรรคในการจัดการเรียนรู้..."
-                        required
-                      ></textarea>
-                    </div>
-
-                    <div className="form-group">
-                      <label>3. ข้อเสนอแนะและแนวทางแก้ไข (การปรับปรุงสำหรับการจัดกิจกรรมครั้งถัดไป)</label>
-                      <textarea
-                        rows="3"
-                        value={solutions}
-                        onChange={(e) => setSolutions(e.target.value)}
-                        placeholder="กรอกแนวทางการแก้ไข ปรับปรุง หรือวิธีการพัฒนาการเรียนรู้..."
-                        required
-                      ></textarea>
-                    </div>
-                  </div>
-                  <div className="modal-footer">
-                    <button type="button" className="btn btn-outline" onClick={() => setSelectedSupervision(null)}>ยกเลิก</button>
-                    <button type="submit" className="btn btn-primary">บันทึกรายงานผล</button>
-                  </div>
-                </form>
-              </div>
-            </div>
-          )}
-
-          {/* Modal Edit Supervision Request */}
-          {editingSupervision && (
-            <div className="modal-overlay">
-              <div className="modal-content" style={{ maxWidth: '520px' }}>
-                <div className="modal-header">
-                  <h3>แก้ไขข้อมูลคำขอรับการนิเทศการสอน</h3>
-                  <button className="modal-close-btn" onClick={() => setEditingSupervision(null)}>×</button>
-                </div>
-                <form onSubmit={handleEditSupervisionSubmit}>
-                  <div className="modal-body">
-                    <div className="form-group">
-                      <label>ชื่อวิชา / รหัสวิชา (ตามหลักสูตรสถานศึกษา)</label>
-                      <input
-                        type="text"
-                        value={editSubject}
-                        onChange={(e) => setEditSubject(e.target.value)}
-                        required
-                      />
-                    </div>
-
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                      <div className="form-group">
-                        <label>ระดับชั้นเรียน</label>
-                        <select value={editGrade} onChange={(e) => setEditGrade(e.target.value)}>
-                          <option value="ม.1">มัธยมศึกษาปีที่ 1</option>
-                          <option value="ม.2">มัธยมศึกษาปีที่ 2</option>
-                          <option value="ม.3">มัธยมศึกษาปีที่ 3</option>
-                          <option value="ม.4">มัธยมศึกษาปีที่ 4</option>
-                          <option value="ม.5">มัธยมศึกษาปีที่ 5</option>
-                          <option value="ม.6">มัธยมศึกษาปีที่ 6</option>
-                        </select>
-                      </div>
-
-                      <div className="form-group">
-                        <label>ห้องเรียนปฏิบัติการ</label>
-                        <select value={editRoom} onChange={(e) => setEditRoom(e.target.value)}>
-                          <option value="1">ห้อง 1</option>
-                          <option value="2">ห้อง 2</option>
-                          <option value="3">ห้อง 3</option>
-                          <option value="4">ห้อง 4</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    <div className="form-group">
-                      <label>สถานที่จัดกิจกรรมการสอน/ห้องเรียนที่รับการนิเทศ</label>
-                      <input
-                        type="text"
-                        value={editLocation}
-                        onChange={(e) => setEditLocation(e.target.value)}
-                        required
-                      />
-                    </div>
-
-                    <div className="form-group">
-                      <label>ลิงก์แผนการจัดการเรียนรู้ (Google Drive / ลิงก์สาธารณะ)</label>
-                      <input
-                        type="text"
-                        value={editPlanUrl}
-                        onChange={(e) => setEditPlanUrl(e.target.value)}
-                        required
-                      />
-                    </div>
-                  </div>
-                  <div className="modal-footer">
-                    <button type="button" className="btn btn-outline" onClick={() => setEditingSupervision(null)}>ยกเลิก</button>
-                    <button type="submit" className="btn btn-primary">บันทึกการแก้ไข</button>
-                  </div>
-                </form>
-              </div>
-            </div>
-          )}
         </div>
       )}
 
@@ -2208,7 +2077,140 @@ export default function TeacherDashboard({
       )}
 
       {/* Modal: Book Supervision & Upload Plan (Cycle 3 Integrated) */}
-      {isBookingModalOpen && (
+          {/* Modal Write Post-Teaching Record */}
+          {selectedSupervision && (
+            <div className="modal-overlay">
+              <div className="modal-content">
+                <div className="modal-header">
+                  <h3>
+                    บันทึกรายงานผลหลังการจัดการเรียนรู้: รายวิชา {selectedSupervision.subject}
+                  </h3>
+                  <button className="modal-close-btn" onClick={() => setSelectedSupervision(null)}>×</button>
+                </div>
+                <form onSubmit={handlePostRecordSubmit}>
+                  <div className="modal-body">
+                    <div style={{ backgroundColor: 'var(--primary-light)', padding: '0.75rem', borderRadius: 'var(--radius-sm)', marginBottom: '1.25rem', fontSize: '13px' }}>
+                      <strong>ระดับชั้นเรียน:</strong> ชั้นมัธยมศึกษาปีที่ {selectedSupervision.grade.replace('ม.', '')}/{selectedSupervision.room} | 
+                      <strong> วันที่จัดกิจกรรม:</strong> {formatThaiDate(selectedSupervision.date)} เวลา {selectedSupervision.time} <br />
+                      <strong>คณะกรรมการนิเทศ:</strong> {selectedSupervision.supervisors ? selectedSupervision.supervisors.map(s => s.name).join(', ') : 'ยังไม่ระบุ'}
+                    </div>
+
+                    <div className="form-group">
+                      <label>1. ผลการจัดการเรียนรู้ (การบรรลุจุดประสงค์การเรียนรู้และสมรรถนะผู้เรียน)</label>
+                      <textarea
+                        rows="3"
+                        value={studentOutcome}
+                        onChange={(e) => setStudentOutcome(e.target.value)}
+                        placeholder="กรอกผลสำเร็จและคุณภาพของผู้เรียนจากการจัดกิจกรรมการเรียนรู้..."
+                        required
+                      ></textarea>
+                    </div>
+
+                    <div className="form-group">
+                      <label>2. ปัญหาและอุปสรรค (ด้านการจัดกิจกรรม สื่อ/อุปกรณ์ หรือพฤติกรรมผู้เรียน)</label>
+                      <textarea
+                        rows="3"
+                        value={problems}
+                        onChange={(e) => setProblems(e.target.value)}
+                        placeholder="กรอกข้อขัดข้อง ปัญหา และอุปสรรคในการจัดการเรียนรู้..."
+                        required
+                      ></textarea>
+                    </div>
+
+                    <div className="form-group">
+                      <label>3. ข้อเสนอแนะและแนวทางแก้ไข (การปรับปรุงสำหรับการจัดกิจกรรมครั้งถัดไป)</label>
+                      <textarea
+                        rows="3"
+                        value={solutions}
+                        onChange={(e) => setSolutions(e.target.value)}
+                        placeholder="กรอกแนวทางการแก้ไข ปรับปรุง หรือวิธีการพัฒนาการเรียนรู้..."
+                        required
+                      ></textarea>
+                    </div>
+                  </div>
+                  <div className="modal-footer">
+                    <button type="button" className="btn btn-outline" onClick={() => setSelectedSupervision(null)}>ยกเลิก</button>
+                    <button type="submit" className="btn btn-primary">บันทึกรายงานผล</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* Modal Edit Supervision Request */}
+          {editingSupervision && (
+            <div className="modal-overlay">
+              <div className="modal-content" style={{ maxWidth: '520px' }}>
+                <div className="modal-header">
+                  <h3>แก้ไขข้อมูลคำขอรับการนิเทศการสอน</h3>
+                  <button className="modal-close-btn" onClick={() => setEditingSupervision(null)}>×</button>
+                </div>
+                <form onSubmit={handleEditSupervisionSubmit}>
+                  <div className="modal-body">
+                    <div className="form-group">
+                      <label>ชื่อวิชา / รหัสวิชา (ตามหลักสูตรสถานศึกษา)</label>
+                      <input
+                        type="text"
+                        value={editSubject}
+                        onChange={(e) => setEditSubject(e.target.value)}
+                        required
+                      />
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                      <div className="form-group">
+                        <label>ระดับชั้นเรียน</label>
+                        <select value={editGrade} onChange={(e) => setEditGrade(e.target.value)}>
+                          <option value="ม.1">มัธยมศึกษาปีที่ 1</option>
+                          <option value="ม.2">มัธยมศึกษาปีที่ 2</option>
+                          <option value="ม.3">มัธยมศึกษาปีที่ 3</option>
+                          <option value="ม.4">มัธยมศึกษาปีที่ 4</option>
+                          <option value="ม.5">มัธยมศึกษาปีที่ 5</option>
+                          <option value="ม.6">มัธยมศึกษาปีที่ 6</option>
+                        </select>
+                      </div>
+
+                      <div className="form-group">
+                        <label>ห้องเรียนปฏิบัติการ</label>
+                        <select value={editRoom} onChange={(e) => setEditRoom(e.target.value)}>
+                          <option value="1">ห้อง 1</option>
+                          <option value="2">ห้อง 2</option>
+                          <option value="3">ห้อง 3</option>
+                          <option value="4">ห้อง 4</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="form-group">
+                      <label>สถานที่จัดกิจกรรมการสอน/ห้องเรียนที่รับการนิเทศ</label>
+                      <input
+                        type="text"
+                        value={editLocation}
+                        onChange={(e) => setEditLocation(e.target.value)}
+                        required
+                      />
+                    </div>
+
+                    <div className="form-group">
+                      <label>ลิงก์แผนการจัดการเรียนรู้ (Google Drive / ลิงก์สาธารณะ)</label>
+                      <input
+                        type="text"
+                        value={editPlanUrl}
+                        onChange={(e) => setEditPlanUrl(e.target.value)}
+                        required
+                      />
+                    </div>
+                  </div>
+                  <div className="modal-footer">
+                    <button type="button" className="btn btn-outline" onClick={() => setEditingSupervision(null)}>ยกเลิก</button>
+                    <button type="submit" className="btn btn-primary">บันทึกการแก้ไข</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+            {isBookingModalOpen && (
         <div className="modal-overlay">
           <div className="modal-content" style={{ maxWidth: '550px', width: '90%' }}>
             <div className="modal-header">
