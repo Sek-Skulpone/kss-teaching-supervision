@@ -39,6 +39,7 @@ export default function AdminDashboard({
   const [selectedEvalSupervision, setSelectedEvalSupervision] = useState(null);
   const [newPlcGroupOption, setNewPlcGroupOption] = useState('');
   const [selectedPlcGroup, setSelectedPlcGroup] = useState('');
+  const [selectedAdminPlcYear, setSelectedAdminPlcYear] = useState(settings.currentAcademicYear || '2569');
   const [plcFilterGroup, setPlcFilterGroup] = useState('');
   const [plcFilterSearch, setPlcFilterSearch] = useState('');
   const [selectedPlcTeacher, setSelectedPlcTeacher] = useState(null);
@@ -72,6 +73,7 @@ export default function AdminDashboard({
   // Settings management states
   const [newPositionOption, setNewPositionOption] = useState('');
   const [newDepartmentOption, setNewDepartmentOption] = useState('');
+  const [newAcademicYearOption, setNewAcademicYearOption] = useState('');
 
   // Set default dropdown values once settings load
   React.useEffect(() => {
@@ -83,6 +85,9 @@ export default function AdminDashboard({
     }
     if (settings.plcGroups && settings.plcGroups.length > 0 && !selectedPlcGroup) {
       setSelectedPlcGroup(settings.plcGroups[0]);
+    }
+    if (settings.currentAcademicYear) {
+      setSelectedAdminPlcYear(settings.currentAcademicYear);
     }
   }, [settings]);
 
@@ -330,6 +335,59 @@ export default function AdminDashboard({
         }
         alert('ลบตัวเลือกกลุ่ม PLC เรียบร้อย');
       }
+    }
+  };
+  
+  const handleAddAcademicYearOption = async (e) => {
+    e.preventDefault();
+    const val = newAcademicYearOption.trim();
+    if (!val) return;
+    const years = settings.academicYears || ['2567', '2568', '2569'];
+    if (years.includes(val)) {
+      alert('ปีการศึกษานี้มีอยู่แล้ว');
+      return;
+    }
+    const updated = {
+      ...settings,
+      academicYears: [...years, val].sort()
+    };
+    const success = await onUpdateSettings(updated);
+    if (success) {
+      setNewAcademicYearOption('');
+      alert('เพิ่มตัวเลือกปีการศึกษาเรียบร้อย');
+    }
+  };
+
+  const handleDeleteAcademicYearOption = async (year) => {
+    const years = settings.academicYears || ['2567', '2568', '2569'];
+    if (years.length <= 1) {
+      alert('ต้องมีตัวเลือกปีการศึกษาอย่างน้อย 1 รายการ');
+      return;
+    }
+    if (window.confirm(`คุณต้องการลบตัวเลือกปีการศึกษา: "${year}" หรือไม่?`)) {
+      const updated = {
+        ...settings,
+        academicYears: years.filter(y => y !== year)
+      };
+      if (updated.currentAcademicYear === year) {
+        updated.currentAcademicYear = updated.academicYears[0];
+      }
+      const success = await onUpdateSettings(updated);
+      if (success) {
+        alert('ลบตัวเลือกปีการศึกษาเรียบร้อย');
+      }
+    }
+  };
+
+  const handleSetCurrentAcademicYear = async (e) => {
+    const year = e.target.value;
+    const updated = {
+      ...settings,
+      currentAcademicYear: year
+    };
+    const success = await onUpdateSettings(updated);
+    if (success) {
+      alert(`ตั้งค่าปีการศึกษา ${year} เป็นปีการศึกษาปัจจุบันเรียบร้อยแล้ว`);
     }
   };
 
@@ -1252,6 +1310,54 @@ export default function AdminDashboard({
                       </button>
                     </form>
                   </div>
+
+                  {/* Academic Years Management */}
+                  <div>
+                    <h4 style={{ fontWeight: 700, fontSize: '13px', color: 'var(--primary-color)', marginBottom: '0.4rem' }}>4. จัดการปีการศึกษา</h4>
+                    
+                    <div className="form-group" style={{ marginBottom: '0.75rem' }}>
+                      <label style={{ fontSize: '12px', fontWeight: 600, display: 'block', marginBottom: '0.25rem' }}>ปีการศึกษาปัจจุบันของระบบ:</label>
+                      <select 
+                        value={settings.currentAcademicYear || '2569'} 
+                        onChange={handleSetCurrentAcademicYear}
+                        style={{ padding: '4px 8px', fontSize: '12px', width: '100%' }}
+                      >
+                        {(settings.academicYears || ['2567', '2568', '2569']).map(y => (
+                          <option key={y} value={y}>ปีการศึกษา {y}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <label style={{ fontSize: '11px', fontWeight: 600, display: 'block', marginBottom: '0.25rem' }}>รายชื่อปีการศึกษา:</label>
+                    <div style={{ display: 'block', maxHeight: '120px', overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: '4px', padding: '0.25rem 0.5rem', backgroundColor: '#fafafa', marginBottom: '0.5rem' }}>
+                      {(settings.academicYears || ['2567', '2568', '2569']).map(y => (
+                        <div key={y} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.2rem 0', borderBottom: '1px solid #eee', fontSize: '12px' }}>
+                          <span>ปีการศึกษา {y} {settings.currentAcademicYear === y && <strong style={{ color: 'var(--primary-color)' }}>(ปัจจุบัน)</strong>}</span>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteAcademicYearOption(y)}
+                            style={{ border: 'none', background: 'none', color: '#e74c3c', cursor: 'pointer', fontWeight: 'bold', fontSize: '11px', padding: '0 4px' }}
+                            title="ลบตัวเลือกนี้"
+                          >
+                            ✖
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    <form onSubmit={handleAddAcademicYearOption} style={{ display: 'flex', gap: '0.25rem' }}>
+                      <input
+                        type="text"
+                        placeholder="เพิ่มปีการศึกษาใหม่ (เช่น 2570)..."
+                        value={newAcademicYearOption}
+                        onChange={(e) => setNewAcademicYearOption(e.target.value)}
+                        style={{ padding: '4px 8px', fontSize: '12px', flex: 1, minWidth: 0 }}
+                        required
+                      />
+                      <button type="submit" className="btn btn-primary" style={{ padding: '4px 8px', fontSize: '12px', whiteSpace: 'nowrap' }}>
+                        เพิ่ม
+                      </button>
+                    </form>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1690,6 +1796,18 @@ export default function AdminDashboard({
           </h2>
 
           <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: '150px' }}>
+              <label style={{ fontWeight: 600, fontSize: '13px' }}>ปีการศึกษา</label>
+              <select
+                value={selectedAdminPlcYear}
+                onChange={(e) => setSelectedAdminPlcYear(e.target.value)}
+                style={{ padding: '0.5rem', fontSize: '13px' }}
+              >
+                {(settings.academicYears || ['2567', '2568', '2569']).map(y => (
+                  <option key={y} value={y}>ปีการศึกษา {y}</option>
+                ))}
+              </select>
+            </div>
             <div style={{ flex: 1, minWidth: '200px' }}>
               <label style={{ fontWeight: 600, fontSize: '13px' }}>กรองตามกลุ่ม PLC</label>
               <select
@@ -1734,7 +1852,7 @@ export default function AdminDashboard({
                   .filter(t => !plcFilterGroup || t.plcGroup === plcFilterGroup)
                   .filter(t => !plcFilterSearch || t.name.toLowerCase().includes(plcFilterSearch.toLowerCase()))
                   .map(teacher => {
-                    const teacherLogs = plcLogs.filter(log => log.teacherId === teacher.id);
+                    const teacherLogs = plcLogs.filter(log => log.teacherId === teacher.id && log.academicYear === selectedAdminPlcYear);
                     const cycle1 = teacherLogs.find(log => Number(log.cycle) === 1);
                     const cycle2 = teacherLogs.find(log => Number(log.cycle) === 2);
                     const cycle3 = teacherLogs.find(log => Number(log.cycle) === 3);
@@ -1842,72 +1960,119 @@ export default function AdminDashboard({
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                {[
-                  { cycleNum: 1, name: 'วงรอบที่ 1: วิเคราะห์ปัญหาและกำหนดเป้าหมาย (Analyze & Goal Setting)' },
-                  { cycleNum: 2, name: 'วงรอบที่ 2: ออกแบบและพัฒนานวัตกรรมการจัดการเรียนรู้ (Design & Development)' },
-                  { cycleNum: 3, name: 'วงรอบที่ 3: ปฏิบัติการสอนและนิเทศแบบชี้แนะ (Implementation & Coaching)' },
-                  { cycleNum: 4, name: 'วงรอบที่ 4: สะท้อนผล ขยายผล และยกระดับคุณภาพ (Reflection & Scaling Up)' }
-                ].map(cycle => {
-                  const log = plcLogs.find(l => l.teacherId === selectedPlcTeacher.id && Number(l.cycle) === cycle.cycleNum);
-                  
-                  return (
-                    <div key={cycle.cycleNum} style={{ border: '1px solid #eee', borderRadius: '6px', overflow: 'hidden' }}>
-                      <div style={{ backgroundColor: log ? '#f0fdf4' : '#fafafa', padding: '0.6rem 0.8rem', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontWeight: 700, fontSize: '13px', color: log ? 'var(--status-approved)' : 'var(--text-medium)' }}>
-                          {cycle.name}
-                        </span>
-                        <span className={`badge badge-${log ? 'approved' : 'pending'}`} style={{ fontSize: '11px' }}>
-                          {log ? '✓ บันทึกผลแล้ว' : 'ยังไม่บันทึก'}
-                        </span>
-                      </div>
-                      
-                      {log ? (
-                        <div style={{ padding: '0.8rem', fontSize: '13px', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', borderBottom: '1px dashed #eee', paddingBottom: '0.4rem' }}>
-                            <div><strong>วัน-เวลา:</strong> {log.date}</div>
-                            <div><strong>สถานที่:</strong> {log.location}</div>
-                          </div>
-                          <div style={{ borderBottom: '1px dashed #eee', paddingBottom: '0.4rem' }}>
-                            <strong>สมาชิกที่เข้าร่วม:</strong>
-                            <div style={{ color: 'var(--text-medium)', marginTop: '0.1rem' }}>{log.members}</div>
-                          </div>
-                          <div style={{ borderBottom: log.images && log.images.length > 0 ? '1px dashed #eee' : 'none', paddingBottom: log.images && log.images.length > 0 ? '0.4rem' : '0' }}>
-                            <strong>ผลการดำเนินงาน PLC:</strong>
-                            <div style={{ color: 'var(--text-dark)', marginTop: '0.1rem', whiteSpace: 'pre-wrap' }}>{log.outcome}</div>
-                          </div>
-                          {log.images && log.images.length > 0 && (
-                            <div>
-                              <strong>📷 ภาพกิจกรรม:</strong>
-                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', gap: '6px', marginTop: '0.25rem' }}>
-                                {log.images.map((img, idx) => (
-                                  <div 
-                                    key={idx} 
-                                    onClick={() => setActivePlcLightboxImage(img)}
-                                    style={{ 
-                                      position: 'relative', 
-                                      width: '100%', 
-                                      aspectRatio: '4/3', 
-                                      borderRadius: '4px', 
-                                      overflow: 'hidden', 
-                                      border: '1px solid #cbd5e1', 
-                                      cursor: 'pointer' 
+                {(() => {
+                  const sup = supervisions.find(s => s.teacherId === selectedPlcTeacher.id && s.academicYear === selectedAdminPlcYear);
+                  const cycle3Images = [];
+                  if (sup && sup.evaluations) {
+                    Object.values(sup.evaluations).forEach(ev => {
+                      if (ev.images && Array.isArray(ev.images)) {
+                        cycle3Images.push(...ev.images);
+                      }
+                    });
+                  }
+
+                  return [
+                    { cycleNum: 1, name: 'วงรอบที่ 1: วิเคราะห์ปัญหาและกำหนดเป้าหมาย (Analyze & Goal Setting)' },
+                    { cycleNum: 2, name: 'วงรอบที่ 2: ออกแบบและพัฒนานวัตกรรมการจัดการเรียนรู้ (Design & Development)' },
+                    { cycleNum: 3, name: 'วงรอบที่ 3: ปฏิบัติการสอนและนิเทศแบบชี้แนะ (Implementation & Coaching)' },
+                    { cycleNum: 4, name: 'วงรอบที่ 4: สะท้อนผล ขยายผล และยกระดับคุณภาพ (Reflection & Scaling Up)' }
+                  ].map(cycle => {
+                    const log = plcLogs.find(l => l.teacherId === selectedPlcTeacher.id && Number(l.cycle) === cycle.cycleNum && l.academicYear === selectedAdminPlcYear);
+                    const imagesToShow = cycle.cycleNum === 3 ? cycle3Images : (log ? log.images : []);
+                    
+                    return (
+                      <div key={cycle.cycleNum} style={{ border: '1px solid #eee', borderRadius: '6px', overflow: 'hidden' }}>
+                        <div style={{ backgroundColor: log ? '#f0fdf4' : '#fafafa', padding: '0.6rem 0.8rem', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontWeight: 700, fontSize: '13px', color: log ? 'var(--status-approved)' : 'var(--text-medium)' }}>
+                            {cycle.name}
+                          </span>
+                          <span className={`badge badge-${log ? 'approved' : 'pending'}`} style={{ fontSize: '11px' }}>
+                            {log ? '✓ บันทึกผลแล้ว' : 'ยังไม่บันทึก'}
+                          </span>
+                        </div>
+                        
+                        {(log || (cycle.cycleNum === 3 && sup)) ? (
+                          <div style={{ padding: '0.8rem', fontSize: '13px', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                            {log && (
+                              <>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', borderBottom: '1px dashed #eee', paddingBottom: '0.4rem' }}>
+                                  <div><strong>วัน-เวลา:</strong> {log.date}</div>
+                                  <div><strong>สถานที่:</strong> {log.location}</div>
+                                </div>
+                                <div style={{ borderBottom: '1px dashed #eee', paddingBottom: '0.4rem' }}>
+                                  <strong>สมาชิกที่เข้าร่วม:</strong>
+                                  <div style={{ color: 'var(--text-medium)', marginTop: '0.1rem' }}>{log.members}</div>
+                                </div>
+                                <div style={{ borderBottom: (imagesToShow.length > 0 || (cycle.cycleNum === 4 && log.revisedPlanUrl)) ? '1px dashed #eee' : 'none', paddingBottom: '0.4rem' }}>
+                                  <strong>ผลการดำเนินงาน PLC:</strong>
+                                  <div style={{ color: 'var(--text-dark)', marginTop: '0.1rem', whiteSpace: 'pre-wrap' }}>{log.outcome}</div>
+                                </div>
+                              </>
+                            )}
+
+                            {cycle.cycleNum === 3 && sup && (
+                              <div style={{ borderBottom: imagesToShow.length > 0 ? '1px dashed #eee' : 'none', paddingBottom: '0.4rem', backgroundColor: 'var(--primary-light)', padding: '0.5rem', borderRadius: '4px' }}>
+                                <strong>📅 ตารางนิเทศ:</strong> {sup.date ? `${formatThaiDate(sup.date)} เวลา ${sup.time}` : 'รอกำหนดวัน-เวลา'} <br/>
+                                <strong>วิชา:</strong> {sup.subject} (ม.{sup.grade.replace('ม.', '')}/{sup.room}) <br/>
+                                <strong>ผู้นิเทศ:</strong> {sup.supervisors && sup.supervisors.length > 0 ? sup.supervisors.map(s => s.name).join(', ') : 'รอจัดสรร'} <br/>
+                                {sup.evaluations && Object.keys(sup.evaluations).length > 0 && (
+                                  <button
+                                    className="btn btn-outline"
+                                    style={{ marginTop: '0.35rem', padding: '0.2rem 0.5rem', fontSize: '11px', backgroundColor: 'white' }}
+                                    onClick={() => {
+                                      setSelectedPlcTeacher(null); // Close this modal first
+                                      setSelectedSummarySupervision(sup);
                                     }}
                                   >
-                                    <img src={img} alt="PLC log detail thumbnail" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                  </div>
-                                ))}
+                                    📊 สรุปผลการประเมิน ({Object.keys(sup.evaluations).length} ท่าน)
+                                  </button>
+                                )}
                               </div>
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--text-light)', fontSize: '13px', fontStyle: 'italic' }}>
-                          ยังไม่มีการบันทึกกิจกรรมสำหรับวงรอบนี้
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+                            )}
+
+                            {cycle.cycleNum === 4 && log && log.revisedPlanUrl && (
+                              <div style={{ borderBottom: imagesToShow.length > 0 ? '1px dashed #eee' : 'none', paddingBottom: '0.4rem' }}>
+                                <strong>📄 แผนการเรียนรู้ที่ปรับปรุงแล้ว:</strong>{' '}
+                                <a href={log.revisedPlanUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary-color)', textDecoration: 'underline', fontWeight: 600 }}>
+                                  เปิดดูแผนที่ปรับปรุงแล้ว
+                                </a>
+                              </div>
+                            )}
+
+                            {imagesToShow.length > 0 && (
+                              <div>
+                                <strong>📷 {cycle.cycleNum === 3 ? 'ภาพกิจกรรมจากการประเมินนิเทศ (โดยผู้นิเทศ):' : 'ภาพกิจกรรม:'}</strong>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', gap: '6px', marginTop: '0.25rem' }}>
+                                  {imagesToShow.map((img, idx) => (
+                                    <div 
+                                      key={idx} 
+                                      onClick={() => setActivePlcLightboxImage(img)}
+                                      style={{ 
+                                        position: 'relative', 
+                                        width: '100%', 
+                                        aspectRatio: '4/3', 
+                                        borderRadius: '4px', 
+                                        overflow: 'hidden', 
+                                        border: '1px solid #cbd5e1', 
+                                        cursor: 'pointer' 
+                                      }}
+                                    >
+                                      <img src={img} alt="PLC log detail thumbnail" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--text-light)', fontSize: '13px', fontStyle: 'italic' }}>
+                            ยังไม่มีการบันทึกกิจกรรมสำหรับวงรอบนี้
+                          </div>
+                        )}
+                      </div>
+                    );
+                  });
+                })()}
               </div>
             </div>
             <div className="modal-footer">
@@ -1965,30 +2130,81 @@ export default function AdminDashboard({
                 </div>
               </div>
 
-              {selectedPlcLogDetail.images && selectedPlcLogDetail.images.length > 0 && (
-                <div>
-                  <span style={{ fontSize: '11px', color: 'var(--text-medium)', fontWeight: 600 }}>📷 ภาพหลักฐาน:</span>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', gap: '8px', marginTop: '0.25rem' }}>
-                    {selectedPlcLogDetail.images.map((img, idx) => (
-                      <div 
-                        key={idx} 
-                        onClick={() => setActivePlcLightboxImage(img)}
-                        style={{ 
-                          position: 'relative', 
-                          width: '100%', 
-                          aspectRatio: '4/3', 
-                          borderRadius: '4px', 
-                          overflow: 'hidden', 
-                          border: '1px solid #cbd5e1', 
-                          cursor: 'pointer' 
-                        }}
-                      >
-                        <img src={img} alt="PLC log detail thumbnail" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              {(() => {
+                const sup = supervisions.find(s => s.teacherId === selectedPlcLogDetail.teacherId && s.academicYear === selectedPlcLogDetail.academicYear);
+                const detailImages = [];
+                if (Number(selectedPlcLogDetail.cycle) === 3) {
+                  if (sup && sup.evaluations) {
+                    Object.values(sup.evaluations).forEach(ev => {
+                      if (ev.images && Array.isArray(ev.images)) {
+                        detailImages.push(...ev.images);
+                      }
+                    });
+                  }
+                } else {
+                  if (selectedPlcLogDetail.images) {
+                    detailImages.push(...selectedPlcLogDetail.images);
+                  }
+                }
+
+                return (
+                  <>
+                    {Number(selectedPlcLogDetail.cycle) === 3 && sup && (
+                      <div style={{ backgroundColor: 'var(--primary-light)', padding: '0.6rem', borderRadius: '4px', borderLeft: '3px solid var(--primary-color)', fontSize: '13px' }}>
+                        <strong>📅 ข้อมูลการนิเทศการสอน:</strong> {sup.date ? `${formatThaiDate(sup.date)} เวลา ${sup.time}` : 'รอกำหนดวัน-เวลา'} <br/>
+                        <strong>วิชา:</strong> {sup.subject} (ม.{sup.grade.replace('ม.', '')}/{sup.room}) <br/>
+                        {sup.evaluations && Object.keys(sup.evaluations).length > 0 && (
+                          <button
+                            type="button"
+                            className="btn btn-outline"
+                            style={{ marginTop: '0.35rem', padding: '0.2rem 0.5rem', fontSize: '11px', backgroundColor: 'white' }}
+                            onClick={() => {
+                              setSelectedPlcLogDetail(null);
+                              setSelectedSummarySupervision(sup);
+                            }}
+                          >
+                            📊 ดูรายงานผลการประเมิน ({Object.keys(sup.evaluations).length} ท่าน)
+                          </button>
+                        )}
                       </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+                    )}
+
+                    {Number(selectedPlcLogDetail.cycle) === 4 && selectedPlcLogDetail.revisedPlanUrl && (
+                      <div style={{ backgroundColor: '#fafafa', padding: '0.5rem', borderRadius: '4px', border: '1px solid #eee' }}>
+                        <span style={{ fontSize: '11px', color: 'var(--text-medium)', fontWeight: 600, display: 'block' }}>📄 แผนการเรียนรู้ที่ปรับปรุงแล้ว:</span>
+                        <a href={selectedPlcLogDetail.revisedPlanUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary-color)', textDecoration: 'underline', fontWeight: 600 }}>
+                          เปิดดูแผนการเรียนรู้ที่ปรับปรุงแล้ว (คลิกที่นี่)
+                        </a>
+                      </div>
+                    )}
+
+                    {detailImages.length > 0 && (
+                      <div>
+                        <span style={{ fontSize: '11px', color: 'var(--text-medium)', fontWeight: 600 }}>📷 {Number(selectedPlcLogDetail.cycle) === 3 ? 'ภาพหลักฐานจากการประเมินนิเทศ (โดยผู้นิเทศ):' : 'ภาพหลักฐาน:'}</span>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', gap: '8px', marginTop: '0.25rem' }}>
+                          {detailImages.map((img, idx) => (
+                            <div 
+                              key={idx} 
+                              onClick={() => setActivePlcLightboxImage(img)}
+                              style={{ 
+                                position: 'relative', 
+                                width: '100%', 
+                                aspectRatio: '4/3', 
+                                borderRadius: '4px', 
+                                overflow: 'hidden', 
+                                border: '1px solid #cbd5e1', 
+                                cursor: 'pointer' 
+                              }}
+                            >
+                              <img src={img} alt="PLC log detail thumbnail" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
             </div>
             <div className="modal-footer" style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
               <button 

@@ -457,7 +457,9 @@ const defaultSettings = {
     'กลุ่ม PLC ศิลปะ',
     'กลุ่ม PLC สุขศึกษาและพลศึกษา',
     'กลุ่ม PLC การงานอาชีพ'
-  ]
+  ],
+  academicYears: ['2567', '2568', '2569'],
+  currentAcademicYear: '2569'
 };
 
 const mergeSettingsWithDefaults = (settingsObj) => {

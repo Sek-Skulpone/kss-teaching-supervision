@@ -744,6 +744,7 @@ export default function App() {
               onAddPlcLog={handleAddPlcLog}
               onUpdatePlcLog={handleUpdatePlcLog}
               onDeletePlcLog={handleDeletePlcLog}
+              settings={settings}
             />
           )
         )}

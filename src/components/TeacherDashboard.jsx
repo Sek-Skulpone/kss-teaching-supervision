@@ -92,17 +92,26 @@ export default function TeacherDashboard({
   plcLogs = [],
   onAddPlcLog,
   onUpdatePlcLog,
-  onDeletePlcLog
+  onDeletePlcLog,
+  settings = { positions: [], departments: [], plcGroups: [], academicYears: ['2567', '2568', '2569'], currentAcademicYear: '2569' }
 }) {
-  const [activeTab, setActiveTab] = useState('request');
+  const [activeTab, setActiveTab] = useState('plc');
 
-  // 1. Request Supervision Form States
+  // 1. Request Supervision Form States (Now used in the Integrated Booking Modal)
   const [subject, setSubject] = useState('');
   const [grade, setGrade] = useState('ม.1');
   const [room, setRoom] = useState('1');
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
   const [planUrl, setPlanUrl] = useState('');
+  const [selectedPlcYear, setSelectedPlcYear] = useState(settings.currentAcademicYear || '2569');
+  const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
+
+  React.useEffect(() => {
+    if (settings.currentAcademicYear) {
+      setSelectedPlcYear(settings.currentAcademicYear);
+    }
+  }, [settings.currentAcademicYear]);
   const [requestError, setRequestError] = useState('');
   const [requestSuccess, setRequestSuccess] = useState('');
 
@@ -158,6 +167,7 @@ export default function TeacherDashboard({
   const [plcExternalMembers, setPlcExternalMembers] = useState('');
   const [plcOutcome, setPlcOutcome] = useState('');
   const [plcImages, setPlcImages] = useState([]);
+  const [plcRevisedPlanUrl, setPlcRevisedPlanUrl] = useState('');
   const [isResizingPlc, setIsResizingPlc] = useState(false);
   const [activePlcLightbox, setActivePlcLightbox] = useState(null);
 
@@ -392,8 +402,13 @@ export default function TeacherDashboard({
       location: plcLocation.trim(),
       members: finalMembersString,
       outcome: plcOutcome.trim(),
-      images: plcImages
+      images: Number(plcModalCycle) === 3 ? [] : plcImages,
+      academicYear: selectedPlcYear
     };
+
+    if (Number(plcModalCycle) === 4) {
+      logData.revisedPlanUrl = plcRevisedPlanUrl.trim();
+    }
 
     let success = false;
     if (selectedPlcLog) {
@@ -418,6 +433,7 @@ export default function TeacherDashboard({
       setPlcExternalMembers('');
       setPlcOutcome('');
       setPlcImages([]);
+      setPlcRevisedPlanUrl('');
     } else {
       alert('เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง');
     }
@@ -435,14 +451,14 @@ export default function TeacherDashboard({
   };
 
   // Handle Supervision Request Submit
-  const handleRequestSubmit = (e) => {
+  const handleRequestSubmit = async (e) => {
     e.preventDefault();
     if (!subject || !planUrl) {
       setRequestError('กรุณากรอกข้อมูลให้ครบถ้วนทุกช่อง');
       return;
     }
     
-    onAddSupervision({
+    const added = await onAddSupervision({
       teacherId: currentUser.id,
       teacherName: currentUser.name,
       subject,
@@ -450,14 +466,19 @@ export default function TeacherDashboard({
       room,
       date: '', // Academic Department will schedule this
       time: '', // Academic Department will schedule this
-      lessonPlanUrl: planUrl
+      lessonPlanUrl: planUrl,
+      academicYear: selectedPlcYear
     });
 
-    setSubject('');
-    setPlanUrl('');
-    setRequestError('');
-    setRequestSuccess('ส่งคำขอและอัปโหลดแผนการสอนเรียบร้อยแล้ว! ฝ่ายวิชาการจะเป็นผู้กำหนดวันและเวลานิเทศการสอน');
-    setTimeout(() => setRequestSuccess(''), 5000);
+    if (added) {
+      setSubject('');
+      setPlanUrl('');
+      setRequestError('');
+      setIsBookingModalOpen(false);
+      alert('ส่งคำขอและอัปโหลดแผนการสอนเรียบร้อยแล้ว! ฝ่ายวิชาการจะเป็นผู้กำหนดวันและเวลานิเทศการสอน');
+    } else {
+      setRequestError('เกิดข้อผิดพลาดในการส่งข้อมูลการจอง กรุณาลองใหม่อีกครั้ง');
+    }
   };
 
   // Handle Edit Supervision Submit
@@ -607,13 +628,14 @@ export default function TeacherDashboard({
   };
 
   // Filtering data subsets
-  const myRequests = supervisions.filter(s => s.teacherId === currentUser.id);
+  const myRequests = supervisions.filter(s => s.teacherId === currentUser.id && s.academicYear === selectedPlcYear);
   const myTermPlans = termPlans.filter(tp => tp.teacherId === currentUser.id);
-  const myPlcLogs = plcLogs.filter(log => log.teacherId === currentUser.id);
+  const myPlcLogs = plcLogs.filter(log => log.teacherId === currentUser.id && log.academicYear === selectedPlcYear);
   
   // Supervisions of other teachers open for volunteering
   const openForVolunteering = supervisions.filter(
     s => s.teacherId !== currentUser.id && 
+         s.academicYear === selectedPlcYear &&
          (s.status === 'pending' || (s.supervisors && s.supervisors.length < 2)) &&
          (!s.supervisors || !s.supervisors.some(sup => sup.id === currentUser.id)) &&
          s.status !== 'completed' &&
@@ -622,7 +644,8 @@ export default function TeacherDashboard({
 
   // My volunteered items waiting or approved
   const myVolunteeredSupervisions = supervisions.filter(
-    s => (s.supervisors && s.supervisors.some(sup => sup.id === currentUser.id)) || s.volunteerId === currentUser.id
+    s => s.academicYear === selectedPlcYear &&
+         ((s.supervisors && s.supervisors.some(sup => sup.id === currentUser.id)) || s.volunteerId === currentUser.id)
   );
 
   const formatThaiDate = (dateStr) => {
@@ -643,11 +666,11 @@ export default function TeacherDashboard({
       {/* Tabs Menu */}
       <div className="tab-container">
         <button
-          className={`tab-btn ${activeTab === 'request' ? 'active' : ''}`}
-          onClick={() => setActiveTab('request')}
+          className={`tab-btn ${activeTab === 'plc' ? 'active' : ''}`}
+          onClick={() => setActiveTab('plc')}
         >
-          <BookOpen size={18} />
-          ขอรับการนิเทศการสอน & อัปโหลดแผนการเรียนรู้
+          <RotateCw size={18} />
+          บันทึกกิจกรรม PLC (4 วงรอบ) ({myPlcLogs.length}/4)
         </button>
         <button
           className={`tab-btn ${activeTab === 'term-plans' ? 'active' : ''}`}
@@ -655,13 +678,6 @@ export default function TeacherDashboard({
         >
           <FolderOpen size={18} />
           ส่งแผนการจัดการเรียนรู้ประจำภาคเรียน
-        </button>
-        <button
-          className={`tab-btn ${activeTab === 'plc' ? 'active' : ''}`}
-          onClick={() => setActiveTab('plc')}
-        >
-          <RotateCw size={18} />
-          บันทึกกิจกรรม PLC (4 วงรอบ) ({myPlcLogs.length}/4)
         </button>
         <button
           className={`tab-btn ${activeTab === 'my-supervisions' ? 'active' : ''}`}
@@ -686,82 +702,7 @@ export default function TeacherDashboard({
         </button>
       </div>
 
-      {/* Tab 1: Request Supervision & Upload Plan */}
-      {activeTab === 'request' && (
-        <div className="card">
-          <h2 className="card-title">
-            <BookOpen />
-            แบบจองเวลานิเทศการเรียนการสอนรายบุคคล
-          </h2>
-          
-          {requestError && (
-            <div style={{ backgroundColor: '#fde8e8', color: '#e74c3c', padding: '0.75rem', borderRadius: 'var(--radius-sm)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '14px' }}>
-              <AlertCircle size={18} />
-              {requestError}
-            </div>
-          )}
 
-          {requestSuccess && (
-            <div style={{ backgroundColor: '#eafaf1', color: '#27ae60', padding: '0.75rem', borderRadius: 'var(--radius-sm)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '14px' }}>
-              <CheckCircle2 size={18} />
-              {requestSuccess}
-            </div>
-          )}
-
-          <form onSubmit={handleRequestSubmit}>
-            <div className="form-group">
-              <label>ชื่อวิชา / รหัสวิชา (ตามหลักสูตรสถานศึกษา)</label>
-              <input
-                type="text"
-                value={subject}
-                onChange={(e) => setSubject(e.target.value)}
-                placeholder="เช่น คณิตศาสตร์เพิ่มเติม (ค31201) หรือ ภาษาอังกฤษพื้นฐาน"
-                required
-              />
-            </div>
-
-            <div className="form-row">
-              <div className="form-group">
-                <label>ระดับชั้นเรียน</label>
-                <select value={grade} onChange={(e) => setGrade(e.target.value)}>
-                  <option value="ม.1">มัธยมศึกษาปีที่ 1</option>
-                  <option value="ม.2">มัธยมศึกษาปีที่ 2</option>
-                  <option value="ม.3">มัธยมศึกษาปีที่ 3</option>
-                  <option value="ม.4">มัธยมศึกษาปีที่ 4</option>
-                  <option value="ม.5">มัธยมศึกษาปีที่ 5</option>
-                  <option value="ม.6">มัธยมศึกษาปีที่ 6</option>
-                </select>
-              </div>
-
-              <div className="form-group">
-                <label>ห้องเรียนปฏิบัติการ</label>
-                <select value={room} onChange={(e) => setRoom(e.target.value)}>
-                  <option value="1">ห้อง 1</option>
-                  <option value="2">ห้อง 2</option>
-                  <option value="3">ห้อง 3</option>
-                  <option value="4">ห้อง 4</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="form-group">
-              <label>ลิงก์เอกสารแผนการจัดการเรียนรู้คาบที่นิเทศ (Google Drive / PDF / ลิงก์สาธารณะ)</label>
-              <input
-                type="text"
-                value={planUrl}
-                onChange={(e) => setPlanUrl(e.target.value)}
-                placeholder="https://docs.google.com/document/d/..."
-                required
-              />
-            </div>
-
-            <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '0.5rem' }}>
-              <Send size={18} />
-              บันทึกการจองเวลาและส่งแผนจัดการเรียนรู้รายบุคคล
-            </button>
-          </form>
-        </div>
-      )}
 
       {/* Tab 2: Register Term-long Lesson Plans */}
       {activeTab === 'term-plans' && (
@@ -1544,11 +1485,25 @@ export default function TeacherDashboard({
               )}
             </div>
             
-            {currentUser.plcGroup && (
-              <div style={{ backgroundColor: 'var(--primary-light)', padding: '0.5rem 1rem', borderRadius: '30px', fontSize: '13px', fontWeight: 600, color: 'var(--primary-color)' }}>
-                บันทึกความคืบหน้า: {myPlcLogs.length} / 4 วงรอบ
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-medium)' }}>ปีการศึกษา:</span>
+                <select
+                  value={selectedPlcYear}
+                  onChange={(e) => setSelectedPlcYear(e.target.value)}
+                  style={{ padding: '0.3rem 0.6rem', fontSize: '13px', borderRadius: '4px', border: '1px solid var(--border-color)', backgroundColor: 'white' }}
+                >
+                  {(settings.academicYears || ['2567', '2568', '2569']).map(y => (
+                    <option key={y} value={y}>{y}</option>
+                  ))}
+                </select>
               </div>
-            )}
+              {currentUser.plcGroup && (
+                <div style={{ backgroundColor: 'var(--primary-light)', padding: '0.5rem 1rem', borderRadius: '30px', fontSize: '13px', fontWeight: 600, color: 'var(--primary-color)' }}>
+                  บันทึกความคืบหน้า: {myPlcLogs.length} / 4 วงรอบ
+                </div>
+              )}
+            </div>
           </div>
 
           {/* 4 Cycles Cards Grid */}
@@ -1560,6 +1515,21 @@ export default function TeacherDashboard({
               { cycleNum: 4, title: 'วงรอบที่ 4: สะท้อนผล ขยายผล และยกระดับคุณภาพ', subtitle: 'Reflection & Scaling Up' }
             ].map(cycle => {
               const log = myPlcLogs.find(l => Number(l.cycle) === cycle.cycleNum);
+              const cycle3Supervision = supervisions.find(
+                s => s.teacherId === currentUser.id && s.academicYear === selectedPlcYear
+              );
+              
+              const cycle3Images = [];
+              if (cycle3Supervision && cycle3Supervision.evaluations) {
+                Object.values(cycle3Supervision.evaluations).forEach(ev => {
+                  if (ev.images && Array.isArray(ev.images)) {
+                    cycle3Images.push(...ev.images);
+                  }
+                });
+              }
+
+              const imagesToShow = cycle.cycleNum === 3 ? cycle3Images : (log ? (log.images || []) : []);
+
               return (
                 <div key={cycle.cycleNum} className="card" style={{ margin: 0, display: 'flex', flexDirection: 'column', height: '100%', justifyContent: 'space-between', border: '1px solid var(--border-color)', position: 'relative' }}>
                   <div>
@@ -1594,11 +1564,27 @@ export default function TeacherDashboard({
                           </p>
                         </div>
 
-                        {log.images && log.images.length > 0 && (
+                        {cycle.cycleNum === 4 && log.revisedPlanUrl && (
+                          <div style={{ marginTop: '0.5rem', backgroundColor: '#f8fafc', padding: '0.5rem', borderRadius: '4px', border: '1px solid #e2e8f0' }}>
+                            <strong style={{ color: 'var(--text-medium)' }}>📄 แผนการสอนที่ปรับปรุงแล้ว:</strong>
+                            <a
+                              href={log.revisedPlanUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="btn btn-outline"
+                              style={{ width: '100%', marginTop: '0.25rem', padding: '0.3rem', fontSize: '11px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem', backgroundColor: 'white' }}
+                            >
+                              <FolderOpen size={12} />
+                              เปิดดูแผนที่ปรับปรุงแล้ว
+                            </a>
+                          </div>
+                        )}
+
+                        {imagesToShow.length > 0 && (
                           <div style={{ marginTop: '0.5rem' }}>
-                            <strong style={{ color: 'var(--text-medium)' }}>📷 ภาพหลักฐาน:</strong>
+                            <strong style={{ color: 'var(--text-medium)' }}>📷 {cycle.cycleNum === 3 ? 'ภาพการนิเทศ (โดยผู้นิเทศ):' : 'ภาพหลักฐาน:'}</strong>
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px', marginTop: '0.25rem' }}>
-                              {log.images.map((img, idx) => (
+                              {imagesToShow.map((img, idx) => (
                                 <div
                                   key={idx}
                                   onClick={() => setActivePlcLightbox(img)}
@@ -1614,6 +1600,58 @@ export default function TeacherDashboard({
                     ) : (
                       <div style={{ textAlign: 'center', padding: '1.5rem 0', border: '1px dashed #e2e8f0', borderRadius: '6px', color: 'var(--text-light)', fontSize: '13px', fontStyle: 'italic', marginBottom: '1rem' }}>
                         ยังไม่มีข้อมูลบันทึกในรอบนี้
+                      </div>
+                    )}
+
+                    {/* Integrated Supervision Booking inside Cycle 3 card */}
+                    {cycle.cycleNum === 3 && (
+                      <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '0.75rem', marginTop: '0.75rem' }}>
+                        <h4 style={{ fontSize: '13px', fontWeight: 700, color: 'var(--primary-color)', margin: '0 0 0.5rem 0' }}>📋 ตารางและข้อมูลการนิเทศการสอน</h4>
+                        {!cycle3Supervision ? (
+                          <div style={{ textAlign: 'center', padding: '1rem', border: '1px dashed #e2e8f0', borderRadius: '6px', backgroundColor: '#fafafa' }}>
+                            <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-medium)', fontStyle: 'italic' }}>ยังไม่ได้จองเวลานิเทศการสอน</p>
+                            <button
+                              type="button"
+                              className="btn btn-outline"
+                              style={{ width: '100%', marginTop: '0.5rem', padding: '0.35rem', fontSize: '11px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.2rem' }}
+                              onClick={() => {
+                                setSubject('');
+                                setPlanUrl('');
+                                setRequestError('');
+                                setIsBookingModalOpen(true);
+                              }}
+                            >
+                              <Plus size={11} /> จองเวลานิเทศการสอน
+                            </button>
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', fontSize: '12.5px', backgroundColor: 'var(--primary-light)', padding: '0.6rem', borderRadius: '6px' }}>
+                            <div><strong>วิชา:</strong> {cycle3Supervision.subject} (ชั้น ม.{cycle3Supervision.grade.replace('ม.', '')}/{cycle3Supervision.room})</div>
+                            <div><strong>วัน-เวลา:</strong> {cycle3Supervision.date ? `${formatThaiDate(cycle3Supervision.date)} (${cycle3Supervision.time.split(' ')[0] || cycle3Supervision.time})` : <span style={{ color: '#e67e22', fontStyle: 'italic', fontWeight: 600 }}>รอกำหนดตารางจากฝ่ายวิชาการ</span>}</div>
+                            <div><strong>ผู้นิเทศ:</strong> {cycle3Supervision.supervisors && cycle3Supervision.supervisors.length > 0 ? cycle3Supervision.supervisors.map(s => s.name).join(', ') : <span style={{ color: 'var(--text-light)', fontStyle: 'italic' }}>อยู่ระหว่างจัดสรร</span>}</div>
+                            <div>
+                              <strong>สถานะ:</strong>{' '}
+                              <span className={`badge badge-${cycle3Supervision.status}`} style={{ fontSize: '10px', padding: '1px 4px' }}>
+                                {cycle3Supervision.status === 'pending' && 'รอจัดสรรกรรมการ'}
+                                {cycle3Supervision.status === 'pending_approval' && 'รอแต่งตั้งผู้เสนอตัว'}
+                                {cycle3Supervision.status === 'approved' && 'แต่งตั้งผู้นิเทศแล้ว'}
+                                {cycle3Supervision.status === 'completed' && 'บันทึกหลังสอนเสร็จสิ้น'}
+                              </span>
+                            </div>
+
+                            {/* View evaluations summary button */}
+                            {cycle3Supervision.evaluations && Object.keys(cycle3Supervision.evaluations).length > 0 && (
+                              <button
+                                type="button"
+                                className="btn btn-outline"
+                                style={{ width: '100%', marginTop: '0.4rem', padding: '0.35rem', fontSize: '11px', borderColor: 'var(--primary-color)', color: 'var(--primary-color)', backgroundColor: 'white' }}
+                                onClick={() => setSelectedReportSummary(cycle3Supervision)}
+                              >
+                                📊 ดูผลการประเมิน ({Object.keys(cycle3Supervision.evaluations).length} ท่าน)
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -1633,6 +1671,7 @@ export default function TeacherDashboard({
                             setPlcLocation(log.location);
                             setPlcOutcome(log.outcome);
                             setPlcImages(log.images || []);
+                            setPlcRevisedPlanUrl(log.revisedPlanUrl || '');
                             
                             const membersArr = log.members.split(',').map(m => m.trim());
                             const checked = teachers
@@ -1674,6 +1713,7 @@ export default function TeacherDashboard({
                           setPlcExternalMembers('');
                           setPlcOutcome('');
                           setPlcImages([]);
+                          setPlcRevisedPlanUrl('');
                           setIsPlcModalOpen(true);
                         }}
                       >
@@ -1808,48 +1848,67 @@ export default function TeacherDashboard({
                   ></textarea>
                 </div>
 
-                <div className="form-group">
-                  <label>อัปโหลดรูปภาพกิจกรรม PLC (สูงสุด 4 รูป, ระบบจะบีบอัดภาพอัตโนมัติ)</label>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    onChange={handlePlcImageChange}
-                    disabled={isResizingPlc}
-                  />
-                  {isResizingPlc && <p style={{ fontSize: '12px', color: 'var(--primary-color)', marginTop: '0.25rem' }}>กำลังประมวลผลและบีบอัดรูปภาพ...</p>}
-                  
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.5rem', marginTop: '0.5rem' }}>
-                    {plcImages.map((img, idx) => (
-                      <div key={idx} style={{ position: 'relative', aspectRatio: '4/3', borderRadius: '4px', overflow: 'hidden', border: '1px solid #ddd' }}>
-                        <img src={img} alt={`PLC Preview ${idx}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                        <button
-                          type="button"
-                          onClick={() => removePlcImage(idx)}
-                          style={{
-                            position: 'absolute',
-                            top: '2px',
-                            right: '2px',
-                            backgroundColor: 'rgba(231, 76, 60, 0.9)',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '50%',
-                            width: '20px',
-                            height: '20px',
-                            fontSize: '12px',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            lineHeight: 1
-                          }}
-                        >
-                          ×
-                        </button>
-                      </div>
-                    ))}
+                {Number(plcModalCycle) === 3 ? (
+                  <div style={{ backgroundColor: '#fafafa', padding: '0.75rem', borderRadius: '4px', border: '1px solid #eee', fontSize: '13px', color: 'var(--text-medium)', marginBottom: '1rem' }}>
+                    📷 <strong>ภาพกิจกรรมการนิเทศ:</strong> ภาพในวงรอบนี้จะถูกดึงมาจากการประเมินนิเทศในระบบโดยอัตโนมัติ (ผู้นิเทศเป็นผู้อัปโหลดรูปภาพ) ครูผู้สอนไม่ต้องอัปโหลดรูปภาพกิจกรรมในหน้านี้
                   </div>
-                </div>
+                ) : (
+                  <div className="form-group">
+                    <label>อัปโหลดรูปภาพกิจกรรม PLC (สูงสุด 4 รูป, ระบบจะบีบอัดภาพอัตโนมัติ)</label>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      onChange={handlePlcImageChange}
+                      disabled={isResizingPlc}
+                    />
+                    {isResizingPlc && <p style={{ fontSize: '12px', color: 'var(--primary-color)', marginTop: '0.25rem' }}>กำลังประมวลผลและบีบอัดรูปภาพ...</p>}
+                    
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.5rem', marginTop: '0.5rem' }}>
+                      {plcImages.map((img, idx) => (
+                        <div key={idx} style={{ position: 'relative', aspectRatio: '4/3', borderRadius: '4px', overflow: 'hidden', border: '1px solid #ddd' }}>
+                          <img src={img} alt={`PLC Preview ${idx}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          <button
+                            type="button"
+                            onClick={() => removePlcImage(idx)}
+                            style={{
+                              position: 'absolute',
+                              top: '2px',
+                              right: '2px',
+                              backgroundColor: 'rgba(231, 76, 60, 0.9)',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '50%',
+                              width: '20px',
+                              height: '20px',
+                              fontSize: '12px',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              lineHeight: 1
+                            }}
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {Number(plcModalCycle) === 4 && (
+                  <div className="form-group" style={{ borderTop: '1px solid #f1f5f9', paddingTop: '1rem', marginTop: '1rem' }}>
+                    <label style={{ fontWeight: 600 }}>ลิงก์แผนการจัดการเรียนรู้ที่ปรับปรุงแล้วจากการสังเกต/นิเทศ (Google Drive / ลิงก์ไฟล์)</label>
+                    <input
+                      type="url"
+                      value={plcRevisedPlanUrl}
+                      onChange={(e) => setPlcRevisedPlanUrl(e.target.value)}
+                      placeholder="วางลิงก์ Google Drive หรือลิงก์ไฟล์ PDF แผนการเรียนรู้ที่ปรับปรุงแล้ว..."
+                    />
+                    <p style={{ fontSize: '11px', color: 'var(--text-light)', marginTop: '0.2rem' }}>แผนการจัดการเรียนรู้ที่ผ่านการสะท้อนผลและปรับปรุงตามข้อสังเกตและคำแนะนำจากคณะกรรมการประเมินนิเทศเรียบร้อยแล้ว</p>
+                  </div>
+                )}
               </div>
               <div className="modal-footer">
                 <button type="button" className="btn btn-outline" onClick={() => setIsPlcModalOpen(false)}>ยกเลิก</button>
@@ -2021,6 +2080,84 @@ export default function TeacherDashboard({
               <div className="modal-footer">
                 <button type="button" className="btn btn-outline" onClick={() => setIsOnePageModalOpen(false)}>ยกเลิก</button>
                 <button type="submit" className="btn btn-primary" disabled={isProcessingOnePage}>บันทึกข้อมูล</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Book Supervision & Upload Plan (Cycle 3 Integrated) */}
+      {isBookingModalOpen && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: '550px', width: '90%' }}>
+            <div className="modal-header">
+              <h3>
+                <BookOpen size={20} style={{ marginRight: '0.4rem', verticalAlign: 'middle', display: 'inline-block' }} />
+                จองเวลานิเทศการเรียนการสอนรายบุคคล ({selectedPlcYear})
+              </h3>
+              <button className="modal-close-btn" onClick={() => setIsBookingModalOpen(false)}>×</button>
+            </div>
+            <form onSubmit={handleRequestSubmit}>
+              <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                {requestError && (
+                  <div style={{ backgroundColor: '#fde8e8', color: '#e74c3c', padding: '0.75rem', borderRadius: 'var(--radius-sm)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '13px' }}>
+                    <AlertCircle size={16} />
+                    {requestError}
+                  </div>
+                )}
+
+                <div className="form-group">
+                  <label style={{ fontWeight: 600 }}>ชื่อวิชา / รหัสวิชา (ตามหลักสูตรสถานศึกษา)</label>
+                  <input
+                    type="text"
+                    value={subject}
+                    onChange={(e) => setSubject(e.target.value)}
+                    placeholder="เช่น คณิตศาสตร์เพิ่มเติม (ค31201) หรือ ภาษาอังกฤษพื้นฐาน"
+                    required
+                  />
+                </div>
+
+                <div className="form-row" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                  <div className="form-group">
+                    <label style={{ fontWeight: 600 }}>ระดับชั้นเรียน</label>
+                    <select value={grade} onChange={(e) => setGrade(e.target.value)}>
+                      <option value="ม.1">มัธยมศึกษาปีที่ 1</option>
+                      <option value="ม.2">มัธยมศึกษาปีที่ 2</option>
+                      <option value="ม.3">มัธยมศึกษาปีที่ 3</option>
+                      <option value="ม.4">มัธยมศึกษาปีที่ 4</option>
+                      <option value="ม.5">มัธยมศึกษาปีที่ 5</option>
+                      <option value="ม.6">มัธยมศึกษาปีที่ 6</option>
+                    </select>
+                  </div>
+
+                  <div className="form-group">
+                    <label style={{ fontWeight: 600 }}>ห้องเรียนปฏิบัติการ</label>
+                    <select value={room} onChange={(e) => setRoom(e.target.value)}>
+                      <option value="1">ห้อง 1</option>
+                      <option value="2">ห้อง 2</option>
+                      <option value="3">ห้อง 3</option>
+                      <option value="4">ห้อง 4</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label style={{ fontWeight: 600 }}>ลิงก์เอกสารแผนการจัดการเรียนรู้คาบที่นิเทศ (Google Drive / PDF / ลิงก์สาธารณะ)</label>
+                  <input
+                    type="text"
+                    value={planUrl}
+                    onChange={(e) => setPlanUrl(e.target.value)}
+                    placeholder="https://docs.google.com/document/d/..."
+                    required
+                  />
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-outline" onClick={() => setIsBookingModalOpen(false)}>ยกเลิก</button>
+                <button type="submit" className="btn btn-primary">
+                  <Send size={14} style={{ marginRight: '0.25rem', display: 'inline-block', verticalAlign: 'middle' }} />
+                  ส่งคำขอจองและบันทึกแผน
+                </button>
               </div>
             </form>
           </div>
