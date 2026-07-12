@@ -26,6 +26,7 @@ export default function AdminDashboard({
   onUpdateTeacher,
   onUpdateSupervision,
   settings = { positions: [], departments: [] },
+  termPlans = [],
   onUpdateSettings,
   onUpdateTeacherPlc,
   plcLogs = [],
@@ -33,6 +34,8 @@ export default function AdminDashboard({
 }) {
   const [activeSubTab, setActiveSubTab] = useState('supervisions');
   const [selectedTeacherId, setSelectedTeacherId] = useState({});
+  const [selectedIndividualTeacherId, setSelectedIndividualTeacherId] = useState('');
+  const [selectedIndividualYear, setSelectedIndividualYear] = useState('2569');
   const [selectedReport, setSelectedReport] = useState(null);
   const [selectedSummaryTeacher, setSelectedSummaryTeacher] = useState(null);
   const [selectedSummarySupervision, setSelectedSummarySupervision] = useState(null);
@@ -88,6 +91,7 @@ export default function AdminDashboard({
     }
     if (settings.currentAcademicYear) {
       setSelectedAdminPlcYear(settings.currentAcademicYear);
+      setSelectedIndividualYear(settings.currentAcademicYear);
     }
   }, [settings]);
 
@@ -561,6 +565,22 @@ export default function AdminDashboard({
           >
             <RotateCw size={16} />
             รายงานกิจกรรม PLC (4 วงรอบ)
+          </button>
+          <button 
+            className={`btn ${activeSubTab === 'individual_portfolio' ? 'btn-primary' : 'btn-outline'}`}
+            onClick={() => {
+              setActiveSubTab('individual_portfolio');
+              if (teachers && teachers.length > 0 && !selectedIndividualTeacherId) {
+                const firstTeacher = teachers.find(t => t.role !== 'admin');
+                if (firstTeacher) {
+                  setSelectedIndividualTeacherId(firstTeacher.id);
+                }
+              }
+            }}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem' }}
+          >
+            <UserCheck size={16} />
+            ข้อมูลครูรายบุคคล (Portfolio)
           </button>
         </div>
 
@@ -1943,6 +1963,232 @@ export default function AdminDashboard({
           </div>
         </div>
       )}
+
+      {activeSubTab === 'individual_portfolio' && (
+        <div className="card">
+          <h2 className="card-title">
+            <UserCheck />
+            ข้อมูลสรุปผลงานและการประเมินรายบุคคล (Teacher Portfolio)
+          </h2>
+
+          {/* Filter Bar */}
+          <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', flexWrap: 'wrap', backgroundColor: '#f8fafc', padding: '1rem', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+            <div style={{ flex: 1, minWidth: '200px' }}>
+              <label style={{ fontWeight: 600, fontSize: '13px', display: 'block', marginBottom: '0.4rem' }}>เลือกครูผู้สอน</label>
+              <select
+                value={selectedIndividualTeacherId}
+                onChange={(e) => setSelectedIndividualTeacherId(e.target.value)}
+                style={{ padding: '0.5rem', fontSize: '13px', width: '100%', borderRadius: '4px', border: '1px solid var(--border-color)', backgroundColor: 'white' }}
+              >
+                <option value="">-- เลือกครูผู้สอน --</option>
+                {teachers.filter(t => t.role !== 'admin').map(t => (
+                  <option key={t.id} value={t.id}>{t.name} ({t.position?.split(' (')[0] || t.role})</option>
+                ))}
+              </select>
+            </div>
+
+            <div style={{ width: '150px' }}>
+              <label style={{ fontWeight: 600, fontSize: '13px', display: 'block', marginBottom: '0.4rem' }}>ปีการศึกษา</label>
+              <select
+                value={selectedIndividualYear}
+                onChange={(e) => setSelectedIndividualYear(e.target.value)}
+                style={{ padding: '0.5rem', fontSize: '13px', width: '100%', borderRadius: '4px', border: '1px solid var(--border-color)', backgroundColor: 'white' }}
+              >
+                {(settings.academicYears || ['2567', '2568', '2569']).map(y => (
+                  <option key={y} value={y}>ปีการศึกษา {y}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Portfolio Content */}
+          {(() => {
+            if (!selectedIndividualTeacherId) {
+              return (
+                <div style={{ textAlign: 'center', padding: '3rem 1rem', color: 'var(--text-light)', fontSize: '14px', fontStyle: 'italic' }}>
+                  กรุณาเลือกครูผู้สอนที่ต้องการดูรายงานข้อมูลรายบุคคล
+                </div>
+              );
+            }
+
+            const teacherObj = teachers.find(t => t.id === selectedIndividualTeacherId);
+            if (!teacherObj) return null;
+
+            // 1. Annual Teaching Plans (termPlans)
+            const plans = termPlans.filter(
+              tp => tp.teacherId === selectedIndividualTeacherId && tp.academicYear === selectedIndividualYear
+            );
+
+            // 2. Cycle 3 Supervision request
+            const sup = supervisions.find(
+              s => s.teacherId === selectedIndividualTeacherId && s.academicYear === selectedIndividualYear
+            );
+
+            // 3. Cycle 4 PLC log
+            const cycle4Log = plcLogs.find(
+              log => log.teacherId === selectedIndividualTeacherId && Number(log.cycle) === 4 && log.academicYear === selectedIndividualYear
+            );
+
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                
+                {/* Teacher Profile Header */}
+                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', backgroundColor: 'var(--primary-light)', padding: '1rem', borderRadius: '6px', borderLeft: '4px solid var(--primary-color)' }}>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: '16px', color: 'var(--primary-color)' }}>{teacherObj.name}</h3>
+                    <p style={{ margin: '0.2rem 0 0 0', fontSize: '13px', color: 'var(--text-medium)' }}>
+                      <strong>ตำแหน่ง:</strong> {teacherObj.position || 'ไม่มีระบุ'} | <strong>กลุ่มสาระฯ:</strong> {teacherObj.department || 'ไม่มีระบุ'} | <strong>กลุ่ม PLC:</strong> {teacherObj.plcGroup || 'ยังไม่มีกลุ่ม PLC'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* 3 Columns / Cards layout */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.25rem' }}>
+                  
+                  {/* Card 1: Annual Teaching Plans */}
+                  <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '1.25rem', display: 'flex', flexDirection: 'column' }}>
+                    <h4 style={{ margin: '0 0 1rem 0', fontSize: '14.5px', fontWeight: 700, color: 'var(--primary-color)', display: 'flex', alignItems: 'center', gap: '0.4rem', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.5rem' }}>
+                      📋 แผนการสอนประจำปี (ภาคเรียนที่ 1 - 2)
+                    </h4>
+                    {plans.length === 0 ? (
+                      <p style={{ margin: 'auto 0', textAlign: 'center', color: 'var(--text-light)', fontSize: '13px', fontStyle: 'italic', padding: '2rem 0' }}>ยังไม่ระบุคลังแผนการจัดเรียนรู้</p>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                        {plans.map(p => (
+                          <div key={p.id} style={{ backgroundColor: '#f8fafc', padding: '0.75rem', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '13px' }}>
+                            <div style={{ fontWeight: 600 }}>{p.subjectCode} {p.subjectName}</div>
+                            <div style={{ color: 'var(--text-medium)', fontSize: '12px', marginTop: '0.2rem' }}>
+                              ระดับชั้น ม.{p.grade.replace('ม.', '')} | ภาคเรียนที่ {p.term}/{p.academicYear}
+                            </div>
+                            <a
+                              href={p.lessonPlanUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{ display: 'inline-block', marginTop: '0.4rem', color: 'var(--primary-color)', textDecoration: 'underline', fontSize: '12px', fontWeight: 600 }}
+                            >
+                              🔗 เปิดดูแผนการจัดเรียนรู้
+                            </a>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Card 2: Cycle 3 Teaching Supervision */}
+                  <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '1.25rem', display: 'flex', flexDirection: 'column' }}>
+                    <h4 style={{ margin: '0 0 1rem 0', fontSize: '14.5px', fontWeight: 700, color: 'var(--primary-color)', display: 'flex', alignItems: 'center', gap: '0.4rem', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.5rem' }}>
+                      🔍 การนิเทศการสอน (วงรอบที่ 3)
+                    </h4>
+                    {!sup ? (
+                      <p style={{ margin: 'auto 0', textAlign: 'center', color: 'var(--text-light)', fontSize: '13px', fontStyle: 'italic', padding: '2rem 0' }}>ยังไม่ได้ส่งคำขอ/บันทึกการนิเทศในระบบ</p>
+                    ) : (
+                      <div style={{ fontSize: '13px', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                        <div><strong>วิชาที่นิเทศ:</strong> {sup.subject} (ม.{sup.grade.replace('ม.', '')}/{sup.room})</div>
+                        <div><strong>วัน-เวลานิเทศ:</strong> {sup.date ? `${formatThaiDate(sup.date)} (${sup.time})` : <span style={{ color: '#e67e22', fontStyle: 'italic' }}>ฝ่ายวิชาการยังไม่ได้กำหนดวัน-เวลา</span>}</div>
+                        <div><strong>สถานที่สอน:</strong> {sup.location || 'ไม่ได้ระบุ'}</div>
+                        <div><strong>คณะกรรมการนิเทศ:</strong> {sup.supervisors && sup.supervisors.length > 0 ? sup.supervisors.map(s => s.name).join(', ') : 'รอจัดสรร'}</div>
+                        
+                        <div style={{ marginTop: '0.25rem', backgroundColor: '#f8fafc', padding: '0.6rem', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                          <strong>แผนการจัดเรียนรู้ที่ใช้สอน:</strong> <br/>
+                          <a href={sup.lessonPlanUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary-color)', textDecoration: 'underline', fontSize: '12px', fontWeight: 600 }}>เปิดดูแผนการสอนที่ใช้รับนิเทศ</a>
+                        </div>
+
+                        {/* Evaluation Summaries */}
+                        <div style={{ marginTop: '0.25rem', borderTop: '1px dashed #e2e8f0', paddingTop: '0.5rem' }}>
+                          <strong>สรุปผลการประเมินนิเทศ:</strong>
+                          {sup.evaluations && Object.keys(sup.evaluations).length > 0 ? (
+                            <div style={{ marginTop: '0.4rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                              <button
+                                type="button"
+                                className="btn btn-outline"
+                                style={{ width: '100%', padding: '0.4rem', fontSize: '12px', borderColor: 'var(--primary-color)', color: 'var(--primary-color)', backgroundColor: 'white' }}
+                                onClick={() => setSelectedSummarySupervision(sup)}
+                              >
+                                📊 เปิดอ่านเล่มรายงานการประเมิน ({Object.keys(sup.evaluations).length} ท่าน)
+                              </button>
+                            </div>
+                          ) : (
+                            <div style={{ color: 'var(--text-light)', fontStyle: 'italic', fontSize: '12px', marginTop: '0.2rem' }}>ยังไม่มีผลการนิเทศในระบบ</div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Card 3: Cycle 4 PLC & Development Reports */}
+                  <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '1.25rem', display: 'flex', flexDirection: 'column' }}>
+                    <h4 style={{ margin: '0 0 1rem 0', fontSize: '14.5px', fontWeight: 700, color: 'var(--primary-color)', display: 'flex', alignItems: 'center', gap: '0.4rem', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.5rem' }}>
+                      🔄 การปรับปรุงและรายงาน (วงรอบที่ 4)
+                    </h4>
+                    
+                    {/* A. Revised Plan (From Cycle 4 PLC Log) */}
+                    <div style={{ fontSize: '13px', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                      <div>
+                        <strong>แผนการจัดการเรียนรู้ที่พัฒนาและปรับปรุงแล้ว:</strong>
+                        {cycle4Log?.revisedPlanUrl ? (
+                          <div style={{ backgroundColor: '#f8fafc', padding: '0.5rem', borderRadius: '6px', border: '1px solid #e2e8f0', marginTop: '0.25rem' }}>
+                            <a href={cycle4Log.revisedPlanUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary-color)', textDecoration: 'underline', fontWeight: 600 }}>
+                              🔗 เปิดดูแผนการสอนที่พัฒนาแล้ว
+                            </a>
+                          </div>
+                        ) : (
+                          <span style={{ display: 'block', color: 'var(--text-light)', fontStyle: 'italic', fontSize: '12px', marginTop: '0.2rem' }}>ยังไม่ได้บันทึกแผนที่ปรับปรุงแล้วในรอบ 4</span>
+                        )}
+                      </div>
+
+                      {/* B. One Page Report (From Cycle 3 Supervision) */}
+                      <div style={{ borderTop: '1px dashed #e2e8f0', paddingTop: '0.5rem' }}>
+                        <strong>เอกสารสรุปผลการนิเทศหน้าเดียว (One Page):</strong>
+                        {sup?.onePageReport ? (
+                          <div style={{ backgroundColor: '#f8fafc', padding: '0.5rem', borderRadius: '6px', border: '1px solid #e2e8f0', marginTop: '0.25rem', display: 'flex', gap: '0.4rem' }}>
+                            <button
+                              type="button"
+                              className="btn btn-outline"
+                              style={{ width: '100%', padding: '0.3rem', fontSize: '11px', borderColor: 'var(--primary-color)', color: 'var(--primary-color)', backgroundColor: 'white' }}
+                              onClick={() => {
+                                if (sup.onePageReport.type === 'image') {
+                                  setActivePlcLightboxImage(sup.onePageReport.fileData);
+                                } else {
+                                  window.open(sup.onePageReport.type === 'link' ? sup.onePageReport.fileUrl : sup.onePageReport.fileData, '_blank');
+                                }
+                              }}
+                            >
+                              📄 เปิดดูเอกสาร One Page ({sup.onePageReport.type === 'link' ? 'ลิงก์' : 'ไฟล์แนบ'})
+                            </button>
+                          </div>
+                        ) : (
+                          <span style={{ display: 'block', color: 'var(--text-light)', fontStyle: 'italic', fontSize: '12px', marginTop: '0.2rem' }}>ยังไม่ได้อัปโหลดเอกสารนิเทศหน้าเดียว</span>
+                        )}
+                      </div>
+
+                      {/* C. Cycle 4 PLC Images */}
+                      {cycle4Log?.images && cycle4Log.images.length > 0 && (
+                        <div style={{ borderTop: '1px dashed #e2e8f0', paddingTop: '0.5rem' }}>
+                          <strong>📷 รูปภาพหลักฐานกิจกรรม PLC:</strong>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px', marginTop: '0.4rem' }}>
+                            {cycle4Log.images.map((img, idx) => (
+                              <div
+                                key={idx}
+                                onClick={() => setActivePlcLightboxImage(img)}
+                                style={{ width: '100%', aspectRatio: '4/3', borderRadius: '4px', overflow: 'hidden', border: '1px solid #cbd5e1', cursor: 'pointer' }}
+                              >
+                                <img src={img} alt={`PLC Log ${idx}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                </div>
+
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
 
       {/* Modal: View Teacher PLC Full Report */}
       {selectedPlcTeacher && (

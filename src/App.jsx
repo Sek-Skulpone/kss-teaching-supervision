@@ -727,6 +727,7 @@ export default function App() {
               onUpdateTeacher={handleUpdateTeacher}
               plcLogs={plcLogs}
               onDeletePlcLog={handleDeletePlcLog}
+              termPlans={termPlans}
             />
           ) : (
             <TeacherDashboard

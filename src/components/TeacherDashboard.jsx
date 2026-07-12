@@ -1025,8 +1025,6 @@ export default function TeacherDashboard({
                     <th>แผนการสอน</th>
                     <th>คณะกรรมการนิเทศ</th>
                     <th>สถานะ</th>
-                    <th>รายงานผล</th>
-                    <th>นิเทศหน้าเดียว</th>
                     <th style={{ textAlign: 'center' }}>การจัดการการจอง</th>
                   </tr>
                 </thead>
@@ -1078,122 +1076,7 @@ export default function TeacherDashboard({
                           {req.status === 'completed' && 'รายงานผลเสร็จสิ้น'}
                         </span>
                       </td>
-                      <td>
-                        {req.status === 'approved' && (
-                          <button
-                            className="btn btn-secondary"
-                            style={{ padding: '0.3rem 0.6rem', fontSize: '12px', whiteSpace: 'nowrap' }}
-                            onClick={() => {
-                              setSelectedSupervision(req);
-                              setStudentOutcome(req.postTeachingRecord?.studentOutcome || '');
-                              setProblems(req.postTeachingRecord?.problems || '');
-                              setSolutions(req.postTeachingRecord?.solutions || '');
-                            }}
-                          >
-                            รายงานบันทึกหลังสอน
-                          </button>
-                        )}
-                        {req.status === 'completed' && (
-                          <button
-                            className="btn btn-outline"
-                            style={{ padding: '0.3rem 0.6rem', fontSize: '12px', whiteSpace: 'nowrap' }}
-                            onClick={() => {
-                              setSelectedSupervision(req);
-                              setStudentOutcome(req.postTeachingRecord.studentOutcome);
-                              setProblems(req.postTeachingRecord.problems);
-                              setSolutions(req.postTeachingRecord.solutions);
-                            }}
-                          >
-                            ดู/แก้ไขรายงานผล
-                          </button>
-                        )}
-                        {req.status === 'pending' && (
-                          <span style={{ fontSize: '12px', color: 'var(--text-light)', fontStyle: 'italic' }}>
-                            รอแต่งตั้งผู้นิเทศครบก่อนรายงาน
-                          </span>
-                        )}
-                        {req.status === 'pending_approval' && (
-                          <span style={{ fontSize: '12px', color: 'var(--text-light)', fontStyle: 'italic' }}>รอแต่งตั้งเสร็จสิ้น</span>
-                        )}
-                        {req.evaluations && Object.keys(req.evaluations).length > 0 && (
-                          <button
-                            type="button"
-                            className="btn btn-outline"
-                            style={{ padding: '0.3rem 0.6rem', fontSize: '12px', whiteSpace: 'nowrap', marginTop: '0.35rem', display: 'block', borderColor: 'var(--primary-color)', color: 'var(--primary-color)' }}
-                            onClick={() => {
-                              setSelectedReportSummary(req);
-                            }}
-                          >
-                            📊 ดูผลประเมิน ({Object.keys(req.evaluations).length} ท่าน)
-                          </button>
-                        )}
-                      </td>
-                      <td>
-                        {req.onePageReport ? (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center' }}>
-                            <button
-                              type="button"
-                              className="btn btn-outline"
-                              style={{ padding: '0.25rem 0.5rem', fontSize: '11px', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
-                              onClick={() => {
-                                if (req.onePageReport.type === 'image') {
-                                  setActivePlcLightbox(req.onePageReport.fileData);
-                                } else {
-                                  window.open(req.onePageReport.type === 'link' ? req.onePageReport.fileUrl : req.onePageReport.fileData, '_blank');
-                                }
-                              }}
-                            >
-                              📄 เปิดดูรายงาน
-                            </button>
-                            <div style={{ display: 'flex', gap: '4px' }}>
-                              <button
-                                type="button"
-                                className="btn btn-outline"
-                                style={{ padding: '0.15rem 0.3rem', fontSize: '10px' }}
-                                onClick={() => {
-                                  setSelectedOnePageSupervision(req);
-                                  setOnePageType(req.onePageReport.type);
-                                  setOnePageFile(req.onePageReport.fileData || '');
-                                  setOnePageLink(req.onePageReport.fileUrl || '');
-                                  setIsOnePageModalOpen(true);
-                                }}
-                              >
-                                แก้ไข
-                              </button>
-                              <button
-                                type="button"
-                                className="btn btn-outline btn-danger"
-                                style={{ padding: '0.15rem 0.3rem', fontSize: '10px', color: '#e74c3c', borderColor: '#e74c3c' }}
-                                onClick={() => handleDeleteOnePage(req.id)}
-                              >
-                                ลบ
-                              </button>
-                            </div>
-                          </div>
-                        ) : (
-                          req.status === 'approved' || req.status === 'completed' ? (
-                            <button
-                              type="button"
-                              className="btn btn-secondary"
-                              style={{ padding: '0.25rem 0.5rem', fontSize: '11px', whiteSpace: 'nowrap' }}
-                              onClick={() => {
-                                setSelectedOnePageSupervision(req);
-                                setOnePageType('image');
-                                setOnePageFile('');
-                                setOnePageLink('');
-                                setOnePageError('');
-                                setIsOnePageModalOpen(true);
-                              }}
-                            >
-                              📤 อัปโหลด
-                            </button>
-                          ) : (
-                            <span style={{ fontSize: '11px', color: 'var(--text-light)', fontStyle: 'italic' }}>
-                              รอบทเรียนอนุมัติ
-                            </span>
-                          )
-                        )}
-                      </td>
+
                       <td style={{ textAlign: 'center' }}>
                         <div style={{ display: 'flex', gap: '0.25rem', justifyContent: 'center' }}>
                           <button
@@ -1536,6 +1419,16 @@ export default function TeacherDashboard({
                             <div><strong>วิชาที่นิเทศ:</strong> {cycle3Supervision.subject} (ชั้น ม.{cycle3Supervision.grade.replace('ม.', '')}/{cycle3Supervision.room})</div>
                             <div><strong>แผนการสอน:</strong> <a href={cycle3Supervision.lessonPlanUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary-color)', textDecoration: 'underline' }}>เปิดดูแผนการจัดการเรียนรู้</a></div>
                             
+                            <div style={{ borderTop: '1px dashed #e2e8f0', marginTop: '0.25rem', paddingTop: '0.25rem', fontSize: '12px' }}>
+                              <strong>บันทึกหลังแผน:</strong> {cycle3Supervision.status === 'completed' ? (
+                                <span style={{ color: '#2ecc71', fontWeight: 600 }}>รายงานเสร็จสิ้นแล้ว</span>
+                              ) : cycle3Supervision.status === 'approved' ? (
+                                <span style={{ color: '#e67e22', fontWeight: 600 }}>รอการบันทึกหลังสอน</span>
+                              ) : (
+                                <span style={{ color: 'var(--text-light)', fontStyle: 'italic' }}>รอผู้นิเทศครบถ้วนก่อนรายงาน</span>
+                              )}
+                            </div>
+
                             <button
                               type="button"
                               className="btn btn-outline"
@@ -1548,38 +1441,154 @@ export default function TeacherDashboard({
                         )}
                       </div>
                     )}
+
+                    {/* Integrated One Page Upload inside Cycle 4 card */}
+                    {cycle.cycleNum === 4 && (
+                      <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '0.75rem', marginTop: '0.75rem' }}>
+                        <h4 style={{ fontSize: '13px', fontWeight: 700, color: 'var(--primary-color)', margin: '0 0 0.5rem 0' }}>📄 นิเทศการสอนหน้าเดียว (One Page)</h4>
+                        {!cycle3Supervision ? (
+                          <div style={{ textAlign: 'center', padding: '1rem', border: '1px dashed #e2e8f0', borderRadius: '6px', backgroundColor: '#fafafa' }}>
+                            <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-medium)', fontStyle: 'italic' }}>กรุณาดำเนินการจองเวลาและนิเทศในวงรอบที่ 3 ก่อน</p>
+                          </div>
+                        ) : (
+                          <div style={{ backgroundColor: '#f8fafc', padding: '0.8rem', borderRadius: '4px', border: '1px solid #e2e8f0', fontSize: '13px', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                            {cycle3Supervision.onePageReport ? (
+                              <>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                  <span style={{ color: '#2ecc71', fontWeight: 600 }}>อัปโหลดไฟล์รายงานแล้ว ({cycle3Supervision.onePageReport.type === 'link' ? 'แนบลิงก์' : 'ไฟล์หลักฐาน'})</span>
+                                  <button
+                                    type="button"
+                                    className="btn btn-outline btn-danger"
+                                    style={{ padding: '0.15rem 0.35rem', fontSize: '10px' }}
+                                    onClick={() => {
+                                      if (window.confirm('คุณแน่ใจหรือไม่ที่จะลบเอกสารรายงานนิเทศหน้าเดียวนี้?')) {
+                                        handleDeleteOnePage(cycle3Supervision.id);
+                                      }
+                                    }}
+                                  >
+                                    ลบ
+                                  </button>
+                                </div>
+                                <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.2rem' }}>
+                                  <button
+                                    type="button"
+                                    className="btn btn-outline"
+                                    style={{ flex: 1, padding: '0.35rem', fontSize: '11px', borderColor: 'var(--primary-color)', color: 'var(--primary-color)', backgroundColor: 'white' }}
+                                    onClick={() => {
+                                      if (cycle3Supervision.onePageReport.type === 'image') {
+                                        setActivePlcLightbox(cycle3Supervision.onePageReport.fileData);
+                                      } else {
+                                        window.open(cycle3Supervision.onePageReport.type === 'link' ? cycle3Supervision.onePageReport.fileUrl : cycle3Supervision.onePageReport.fileData, '_blank');
+                                      }
+                                    }}
+                                  >
+                                    เปิดดูรายงาน
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn btn-outline"
+                                    style={{ flex: 1, padding: '0.35rem', fontSize: '11px', backgroundColor: 'white' }}
+                                    onClick={() => {
+                                      setSelectedOnePageSupervision(cycle3Supervision);
+                                      setOnePageType(cycle3Supervision.onePageReport.type);
+                                      setOnePageFile(cycle3Supervision.onePageReport.fileData || '');
+                                      setOnePageLink(cycle3Supervision.onePageReport.fileUrl || '');
+                                      setIsOnePageModalOpen(true);
+                                    }}
+                                  >
+                                    แก้ไขไฟล์
+                                  </button>
+                                </div>
+                              </>
+                            ) : (
+                              <>
+                                <div style={{ color: 'var(--text-medium)', fontSize: '12px', fontStyle: 'italic', textAlign: 'center' }}>ยังไม่มีการอัปโหลดนิเทศหน้าเดียว</div>
+                                <button
+                                  type="button"
+                                  className="btn btn-primary"
+                                  style={{ width: '100%', padding: '0.4rem', fontSize: '11px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}
+                                  onClick={() => {
+                                    setSelectedOnePageSupervision(cycle3Supervision);
+                                    setOnePageType('image');
+                                    setOnePageFile('');
+                                    setOnePageLink('');
+                                    setOnePageError('');
+                                    setIsOnePageModalOpen(true);
+                                  }}
+                                >
+                                  📤 อัปโหลดนิเทศหน้าเดียว
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {/* Actions */}
                   <div style={{ display: 'flex', gap: '0.5rem', marginTop: 'auto', paddingTop: '0.75rem', borderTop: '1px solid #f1f5f9' }}>
                     {cycle.cycleNum === 3 ? (
                       cycle3Supervision ? (
-                        <div style={{ display: 'flex', gap: '0.5rem', width: '100%' }}>
-                          <button
-                            type="button"
-                            className="btn btn-outline"
-                            style={{ flex: 1, padding: '0.5rem', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem', borderColor: 'var(--primary-color)', color: 'var(--primary-color)', backgroundColor: 'white' }}
-                            onClick={() => setSelectedReportSummary(cycle3Supervision)}
-                          >
-                            📊 ดูผลประเมิน
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-outline"
-                            style={{ flex: 1, padding: '0.5rem', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}
-                            onClick={() => {
-                              setEditingSupervision(cycle3Supervision);
-                              setEditSubject(cycle3Supervision.subject);
-                              setEditGrade(cycle3Supervision.grade);
-                              setEditRoom(cycle3Supervision.room);
-                              setEditDate(cycle3Supervision.date);
-                              setEditTime(cycle3Supervision.time);
-                              setEditPlanUrl(cycle3Supervision.lessonPlanUrl);
-                              setEditLocation(cycle3Supervision.location || '');
-                            }}
-                          >
-                            <Edit size={12} /> แก้ไขการจอง
-                          </button>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', width: '100%' }}>
+                          <div style={{ display: 'flex', gap: '0.4rem', width: '100%' }}>
+                            <button
+                              type="button"
+                              className="btn btn-outline"
+                              style={{ flex: 1, padding: '0.5rem', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem', borderColor: 'var(--primary-color)', color: 'var(--primary-color)', backgroundColor: 'white' }}
+                              onClick={() => setSelectedReportSummary(cycle3Supervision)}
+                            >
+                              📊 ดูผลประเมิน
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-outline"
+                              style={{ flex: 1, padding: '0.5rem', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}
+                              onClick={() => {
+                                setEditingSupervision(cycle3Supervision);
+                                setEditSubject(cycle3Supervision.subject);
+                                setEditGrade(cycle3Supervision.grade);
+                                setEditRoom(cycle3Supervision.room);
+                                setEditDate(cycle3Supervision.date);
+                                setEditTime(cycle3Supervision.time);
+                                setEditPlanUrl(cycle3Supervision.lessonPlanUrl);
+                                setEditLocation(cycle3Supervision.location || '');
+                              }}
+                            >
+                              <Edit size={12} /> แก้ไขการจอง
+                            </button>
+                          </div>
+                          
+                          {cycle3Supervision.status === 'approved' && (
+                            <button
+                              type="button"
+                              className="btn btn-secondary"
+                              style={{ width: '100%', padding: '0.5rem', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}
+                              onClick={() => {
+                                setSelectedSupervision(cycle3Supervision);
+                                setStudentOutcome(cycle3Supervision.postTeachingRecord?.studentOutcome || '');
+                                setProblems(cycle3Supervision.postTeachingRecord?.problems || '');
+                                setSolutions(cycle3Supervision.postTeachingRecord?.solutions || '');
+                              }}
+                            >
+                              📝 บันทึกรายงานหลังสอน
+                            </button>
+                          )}
+                          {cycle3Supervision.status === 'completed' && (
+                            <button
+                              type="button"
+                              className="btn btn-outline"
+                              style={{ width: '100%', padding: '0.5rem', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}
+                              onClick={() => {
+                                setSelectedSupervision(cycle3Supervision);
+                                setStudentOutcome(cycle3Supervision.postTeachingRecord.studentOutcome);
+                                setProblems(cycle3Supervision.postTeachingRecord.problems);
+                                setSolutions(cycle3Supervision.postTeachingRecord.solutions);
+                              }}
+                            >
+                              📝 ดู/แก้ไขบันทึกหลังสอน
+                            </button>
+                          )}
                         </div>
                       ) : (
                         <button
