@@ -255,10 +255,12 @@ export default function App() {
   const handleAddSupervision = async (data) => {
     setIsLoading(true);
     try {
-      await addSupervision(data);
+      const added = await addSupervision(data);
       await refreshSupervisionData();
+      return added;
     } catch (e) {
       console.error(e);
+      return null;
     } finally {
       setIsLoading(false);
     }

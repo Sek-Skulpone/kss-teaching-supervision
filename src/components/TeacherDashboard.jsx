@@ -141,6 +141,7 @@ export default function TeacherDashboard({
   const [editDate, setEditDate] = useState('');
   const [editTime, setEditTime] = useState('');
   const [editPlanUrl, setEditPlanUrl] = useState('');
+  const [editLocation, setEditLocation] = useState('');
 
   // C. Post Lesson Record for Term Plan States
   const [selectedTermPlan, setSelectedTermPlan] = useState(null);
@@ -493,7 +494,7 @@ export default function TeacherDashboard({
   // Handle Edit Supervision Submit
   const handleEditSupervisionSubmit = async (e) => {
     e.preventDefault();
-    if (!editSubject || !editPlanUrl) {
+    if (!editSubject || !editPlanUrl || !editLocation) {
       alert('กรุณากรอกข้อมูลให้ครบทุกช่อง');
       return;
     }
@@ -502,7 +503,8 @@ export default function TeacherDashboard({
       subject: editSubject,
       grade: editGrade,
       room: editRoom,
-      lessonPlanUrl: editPlanUrl
+      lessonPlanUrl: editPlanUrl,
+      location: editLocation.trim()
     });
 
     if (success) {
@@ -1205,6 +1207,7 @@ export default function TeacherDashboard({
                               setEditDate(req.date);
                               setEditTime(req.time);
                               setEditPlanUrl(req.lessonPlanUrl);
+                              setEditLocation(req.location || '');
                             }}
                           >
                             <Edit size={12} /> แก้ไข
@@ -1327,6 +1330,16 @@ export default function TeacherDashboard({
                           <option value="4">ห้อง 4</option>
                         </select>
                       </div>
+                    </div>
+
+                    <div className="form-group">
+                      <label>สถานที่จัดกิจกรรมการสอน/ห้องเรียนที่รับการนิเทศ</label>
+                      <input
+                        type="text"
+                        value={editLocation}
+                        onChange={(e) => setEditLocation(e.target.value)}
+                        required
+                      />
                     </div>
 
                     <div className="form-group">
@@ -1672,14 +1685,33 @@ export default function TeacherDashboard({
                   <div style={{ display: 'flex', gap: '0.5rem', marginTop: 'auto', paddingTop: '0.75rem', borderTop: '1px solid #f1f5f9' }}>
                     {cycle.cycleNum === 3 ? (
                       cycle3Supervision ? (
-                        <button
-                          type="button"
-                          className="btn btn-outline"
-                          style={{ width: '100%', padding: '0.5rem', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem', borderColor: 'var(--primary-color)', color: 'var(--primary-color)', backgroundColor: 'white' }}
-                          onClick={() => setSelectedReportSummary(cycle3Supervision)}
-                        >
-                          📊 ดูผลการประเมินการนิเทศ
-                        </button>
+                        <div style={{ display: 'flex', gap: '0.5rem', width: '100%' }}>
+                          <button
+                            type="button"
+                            className="btn btn-outline"
+                            style={{ flex: 1, padding: '0.5rem', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem', borderColor: 'var(--primary-color)', color: 'var(--primary-color)', backgroundColor: 'white' }}
+                            onClick={() => setSelectedReportSummary(cycle3Supervision)}
+                          >
+                            📊 ดูผลประเมิน
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-outline"
+                            style={{ flex: 1, padding: '0.5rem', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}
+                            onClick={() => {
+                              setEditingSupervision(cycle3Supervision);
+                              setEditSubject(cycle3Supervision.subject);
+                              setEditGrade(cycle3Supervision.grade);
+                              setEditRoom(cycle3Supervision.room);
+                              setEditDate(cycle3Supervision.date);
+                              setEditTime(cycle3Supervision.time);
+                              setEditPlanUrl(cycle3Supervision.lessonPlanUrl);
+                              setEditLocation(cycle3Supervision.location || '');
+                            }}
+                          >
+                            <Edit size={12} /> แก้ไขการจอง
+                          </button>
+                        </div>
                       ) : (
                         <button
                           type="button"
