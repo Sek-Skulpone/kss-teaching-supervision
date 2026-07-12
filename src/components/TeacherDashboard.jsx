@@ -104,6 +104,7 @@ export default function TeacherDashboard({
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
   const [planUrl, setPlanUrl] = useState('');
+  const [bookingLocation, setBookingLocation] = useState('');
   const [selectedPlcYear, setSelectedPlcYear] = useState(settings.currentAcademicYear || '2569');
   const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
 
@@ -381,7 +382,13 @@ export default function TeacherDashboard({
 
   const handlePlcSubmit = async (e) => {
     e.preventDefault();
-    if (!plcDate || !plcLocation || !plcOutcome) {
+    
+    const isCycle4 = Number(plcModalCycle) === 4;
+    const outcomeToSave = isCycle4 
+      ? (plcOutcome.trim() || 'สะท้อนผลการจัดกิจกรรมการเรียนรู้และนำเสนอแผนการจัดการเรียนรู้ที่ได้รับการพัฒนาปรับปรุงเรียบร้อยแล้ว')
+      : plcOutcome.trim();
+
+    if (!plcDate || !plcLocation || (!isCycle4 && !outcomeToSave)) {
       alert('กรุณากรอกข้อมูลวัน-เวลา, สถานที่ และผลการดำเนินงานให้ครบถ้วน');
       return;
     }
@@ -401,12 +408,12 @@ export default function TeacherDashboard({
       date: plcDate.trim(),
       location: plcLocation.trim(),
       members: finalMembersString,
-      outcome: plcOutcome.trim(),
+      outcome: outcomeToSave,
       images: Number(plcModalCycle) === 3 ? [] : plcImages,
       academicYear: selectedPlcYear
     };
 
-    if (Number(plcModalCycle) === 4) {
+    if (isCycle4) {
       logData.revisedPlanUrl = plcRevisedPlanUrl.trim();
     }
 
@@ -453,7 +460,7 @@ export default function TeacherDashboard({
   // Handle Supervision Request Submit
   const handleRequestSubmit = async (e) => {
     e.preventDefault();
-    if (!subject || !planUrl) {
+    if (!subject || !planUrl || !bookingLocation) {
       setRequestError('กรุณากรอกข้อมูลให้ครบถ้วนทุกช่อง');
       return;
     }
@@ -464,6 +471,7 @@ export default function TeacherDashboard({
       subject,
       grade,
       room,
+      location: bookingLocation.trim(),
       date: '', // Academic Department will schedule this
       time: '', // Academic Department will schedule this
       lessonPlanUrl: planUrl,
@@ -473,6 +481,7 @@ export default function TeacherDashboard({
     if (added) {
       setSubject('');
       setPlanUrl('');
+      setBookingLocation('');
       setRequestError('');
       setIsBookingModalOpen(false);
       alert('ส่งคำขอและอัปโหลดแผนการสอนเรียบร้อยแล้ว! ฝ่ายวิชาการจะเป็นผู้กำหนดวันและเวลานิเทศการสอน');
@@ -648,6 +657,18 @@ export default function TeacherDashboard({
          ((s.supervisors && s.supervisors.some(sup => sup.id === currentUser.id)) || s.volunteerId === currentUser.id)
   );
 
+  const completedCyclesCount = (() => {
+    let count = 0;
+    if (myPlcLogs.some(l => Number(l.cycle) === 1)) count++;
+    if (myPlcLogs.some(l => Number(l.cycle) === 2)) count++;
+    if (myPlcLogs.some(l => Number(l.cycle) === 4)) count++;
+    const hasCycle3Booking = supervisions.some(
+      s => s.teacherId === currentUser.id && s.academicYear === selectedPlcYear
+    );
+    if (hasCycle3Booking) count++;
+    return count;
+  })();
+
   const formatThaiDate = (dateStr) => {
     if (!dateStr) return '';
     const parts = dateStr.split('-');
@@ -670,7 +691,7 @@ export default function TeacherDashboard({
           onClick={() => setActiveTab('plc')}
         >
           <RotateCw size={18} />
-          บันทึกกิจกรรม PLC (4 วงรอบ) ({myPlcLogs.length}/4)
+          บันทึกกิจกรรม PLC (4 วงรอบ) ({completedCyclesCount}/4)
         </button>
         <button
           className={`tab-btn ${activeTab === 'term-plans' ? 'active' : ''}`}
@@ -1500,7 +1521,7 @@ export default function TeacherDashboard({
               </div>
               {currentUser.plcGroup && (
                 <div style={{ backgroundColor: 'var(--primary-light)', padding: '0.5rem 1rem', borderRadius: '30px', fontSize: '13px', fontWeight: 600, color: 'var(--primary-color)' }}>
-                  บันทึกความคืบหน้า: {myPlcLogs.length} / 4 วงรอบ
+                  บันทึกความคืบหน้า: {completedCyclesCount} / 4 วงรอบ
                 </div>
               )}
             </div>
@@ -1514,10 +1535,25 @@ export default function TeacherDashboard({
               { cycleNum: 3, title: 'วงรอบที่ 3: ปฏิบัติการสอนและนิเทศแบบชี้แนะ', subtitle: 'Implementation & Coaching' },
               { cycleNum: 4, title: 'วงรอบที่ 4: สะท้อนผล ขยายผล และยกระดับคุณภาพ', subtitle: 'Reflection & Scaling Up' }
             ].map(cycle => {
-              const log = myPlcLogs.find(l => Number(l.cycle) === cycle.cycleNum);
+              let log = myPlcLogs.find(l => Number(l.cycle) === cycle.cycleNum);
               const cycle3Supervision = supervisions.find(
                 s => s.teacherId === currentUser.id && s.academicYear === selectedPlcYear
               );
+
+              // Virtualize Cycle 3 log if a supervision has been booked
+              if (cycle.cycleNum === 3 && cycle3Supervision) {
+                log = {
+                  id: 'virtual-cycle-3',
+                  cycle: 3,
+                  date: cycle3Supervision.date ? `${formatThaiDate(cycle3Supervision.date)} (${cycle3Supervision.time})` : 'รอกำหนดเวลาจากฝ่ายวิชาการ',
+                  location: cycle3Supervision.location || 'ไม่ได้ระบุสถานที่',
+                  members: cycle3Supervision.supervisors && cycle3Supervision.supervisors.length > 0 
+                    ? [currentUser.name, ...cycle3Supervision.supervisors.map(s => s.name)].join(', ') 
+                    : currentUser.name,
+                  outcome: 'ปฏิบัติการสอนและนิเทศในห้องเรียนเสร็จสิ้นหรือกำลังดำเนินการ',
+                  images: []
+                };
+              }
               
               const cycle3Images = [];
               if (cycle3Supervision && cycle3Supervision.evaluations) {
@@ -1536,7 +1572,9 @@ export default function TeacherDashboard({
                     {/* Header */}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
                       <span className={`badge badge-${log ? 'approved' : 'pending'}`} style={{ fontSize: '11px', padding: '0.25rem 0.5rem' }}>
-                        {log ? '✓ บันทึกผลแล้ว' : '⚠️ ยังไม่บันทึก'}
+                        {cycle.cycleNum === 3 
+                          ? (cycle3Supervision ? '✓ จองเวลานิเทศแล้ว' : '⚠️ ยังไม่จองเวลา') 
+                          : (log ? '✓ บันทึกผลแล้ว' : '⚠️ ยังไม่บันทึก')}
                       </span>
                       <span style={{ fontSize: '18px', fontWeight: 800, color: log ? 'var(--primary-color)' : 'var(--text-light)' }}>
                         #{cycle.cycleNum}
@@ -1610,46 +1648,20 @@ export default function TeacherDashboard({
                         {!cycle3Supervision ? (
                           <div style={{ textAlign: 'center', padding: '1rem', border: '1px dashed #e2e8f0', borderRadius: '6px', backgroundColor: '#fafafa' }}>
                             <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-medium)', fontStyle: 'italic' }}>ยังไม่ได้จองเวลานิเทศการสอน</p>
+                          </div>
+                        ) : (
+                          <div style={{ backgroundColor: '#f8fafc', padding: '0.8rem', borderRadius: '4px', border: '1px solid #e2e8f0', fontSize: '13px', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                            <div><strong>วิชาที่นิเทศ:</strong> {cycle3Supervision.subject} (ชั้น ม.{cycle3Supervision.grade.replace('ม.', '')}/{cycle3Supervision.room})</div>
+                            <div><strong>แผนการสอน:</strong> <a href={cycle3Supervision.lessonPlanUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary-color)', textDecoration: 'underline' }}>เปิดดูแผนการจัดการเรียนรู้</a></div>
+                            
                             <button
                               type="button"
                               className="btn btn-outline"
-                              style={{ width: '100%', marginTop: '0.5rem', padding: '0.35rem', fontSize: '11px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.2rem' }}
-                              onClick={() => {
-                                setSubject('');
-                                setPlanUrl('');
-                                setRequestError('');
-                                setIsBookingModalOpen(true);
-                              }}
+                              style={{ width: '100%', marginTop: '0.4rem', padding: '0.35rem', fontSize: '11px', borderColor: 'var(--primary-color)', color: 'var(--primary-color)', backgroundColor: 'white' }}
+                              onClick={() => setSelectedReportSummary(cycle3Supervision)}
                             >
-                              <Plus size={11} /> จองเวลานิเทศการสอน
+                              📊 ดูผลการประเมินการนิเทศ {cycle3Supervision.evaluations && Object.keys(cycle3Supervision.evaluations).length > 0 ? `(${Object.keys(cycle3Supervision.evaluations).length} ท่าน)` : '(ยังไม่ได้รับการนิเทศ)'}
                             </button>
-                          </div>
-                        ) : (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', fontSize: '12.5px', backgroundColor: 'var(--primary-light)', padding: '0.6rem', borderRadius: '6px' }}>
-                            <div><strong>วิชา:</strong> {cycle3Supervision.subject} (ชั้น ม.{cycle3Supervision.grade.replace('ม.', '')}/{cycle3Supervision.room})</div>
-                            <div><strong>วัน-เวลา:</strong> {cycle3Supervision.date ? `${formatThaiDate(cycle3Supervision.date)} (${cycle3Supervision.time.split(' ')[0] || cycle3Supervision.time})` : <span style={{ color: '#e67e22', fontStyle: 'italic', fontWeight: 600 }}>รอกำหนดตารางจากฝ่ายวิชาการ</span>}</div>
-                            <div><strong>ผู้นิเทศ:</strong> {cycle3Supervision.supervisors && cycle3Supervision.supervisors.length > 0 ? cycle3Supervision.supervisors.map(s => s.name).join(', ') : <span style={{ color: 'var(--text-light)', fontStyle: 'italic' }}>อยู่ระหว่างจัดสรร</span>}</div>
-                            <div>
-                              <strong>สถานะ:</strong>{' '}
-                              <span className={`badge badge-${cycle3Supervision.status}`} style={{ fontSize: '10px', padding: '1px 4px' }}>
-                                {cycle3Supervision.status === 'pending' && 'รอจัดสรรกรรมการ'}
-                                {cycle3Supervision.status === 'pending_approval' && 'รอแต่งตั้งผู้เสนอตัว'}
-                                {cycle3Supervision.status === 'approved' && 'แต่งตั้งผู้นิเทศแล้ว'}
-                                {cycle3Supervision.status === 'completed' && 'บันทึกหลังสอนเสร็จสิ้น'}
-                              </span>
-                            </div>
-
-                            {/* View evaluations summary button */}
-                            {cycle3Supervision.evaluations && Object.keys(cycle3Supervision.evaluations).length > 0 && (
-                              <button
-                                type="button"
-                                className="btn btn-outline"
-                                style={{ width: '100%', marginTop: '0.4rem', padding: '0.35rem', fontSize: '11px', borderColor: 'var(--primary-color)', color: 'var(--primary-color)', backgroundColor: 'white' }}
-                                onClick={() => setSelectedReportSummary(cycle3Supervision)}
-                              >
-                                📊 ดูผลการประเมิน ({Object.keys(cycle3Supervision.evaluations).length} ท่าน)
-                              </button>
-                            )}
                           </div>
                         )}
                       </div>
@@ -1658,7 +1670,35 @@ export default function TeacherDashboard({
 
                   {/* Actions */}
                   <div style={{ display: 'flex', gap: '0.5rem', marginTop: 'auto', paddingTop: '0.75rem', borderTop: '1px solid #f1f5f9' }}>
-                    {log ? (
+                    {cycle.cycleNum === 3 ? (
+                      cycle3Supervision ? (
+                        <button
+                          type="button"
+                          className="btn btn-outline"
+                          style={{ width: '100%', padding: '0.5rem', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem', borderColor: 'var(--primary-color)', color: 'var(--primary-color)', backgroundColor: 'white' }}
+                          onClick={() => setSelectedReportSummary(cycle3Supervision)}
+                        >
+                          📊 ดูผลการประเมินการนิเทศ
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className="btn btn-primary"
+                          style={{ width: '100%', padding: '0.5rem', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}
+                          disabled={!currentUser.plcGroup}
+                          onClick={() => {
+                            setSubject('');
+                            setPlanUrl('');
+                            setBookingLocation('');
+                            setRequestError('');
+                            setIsBookingModalOpen(true);
+                          }}
+                        >
+                          <Plus size={14} />
+                          จองเวลานิเทศการสอน
+                        </button>
+                      )
+                    ) : log ? (
                       <>
                         <button
                           type="button"
@@ -1667,22 +1707,33 @@ export default function TeacherDashboard({
                           onClick={() => {
                             setSelectedPlcLog(log);
                             setPlcModalCycle(cycle.cycleNum);
-                            setPlcDate(log.date);
-                            setPlcLocation(log.location);
-                            setPlcOutcome(log.outcome);
+                            
+                            if (Number(cycle.cycleNum) === 4) {
+                              const c3Sup = supervisions.find(
+                                s => s.teacherId === currentUser.id && s.academicYear === selectedPlcYear
+                              );
+                              const c3DateStr = c3Sup?.date ? `${formatThaiDate(c3Sup.date)} (${c3Sup.time})` : log.date;
+                              setPlcDate(c3DateStr);
+                              setPlcLocation(c3Sup?.location || log.location);
+                              const supervisorNames = c3Sup?.supervisors ? c3Sup.supervisors.map(s => s.name) : [];
+                              setPlcCheckedTeachers(supervisorNames.length > 0 ? supervisorNames : log.members.split(',').map(m => m.trim()));
+                              setPlcExternalMembers('');
+                            } else {
+                              setPlcDate(log.date);
+                              setPlcLocation(log.location);
+                              const membersArr = log.members.split(',').map(m => m.trim());
+                              const checked = teachers
+                                .filter(t => t.id !== currentUser.id && membersArr.includes(t.name))
+                                .map(t => t.name);
+                              setPlcCheckedTeachers(checked);
+                              const teacherNames = teachers.map(t => t.name);
+                              const external = membersArr.filter(name => name !== currentUser.name && !teacherNames.includes(name));
+                              setPlcExternalMembers(external.join(', '));
+                            }
+
+                            setPlcOutcome(log.outcome || (Number(cycle.cycleNum) === 4 ? 'สะท้อนผลการจัดกิจกรรมการเรียนรู้และนำเสนอแผนการจัดการเรียนรู้ที่ได้รับการพัฒนาปรับปรุงเรียบร้อยแล้ว' : ''));
                             setPlcImages(log.images || []);
                             setPlcRevisedPlanUrl(log.revisedPlanUrl || '');
-                            
-                            const membersArr = log.members.split(',').map(m => m.trim());
-                            const checked = teachers
-                              .filter(t => t.id !== currentUser.id && membersArr.includes(t.name))
-                              .map(t => t.name);
-                            setPlcCheckedTeachers(checked);
-                            
-                            const teacherNames = teachers.map(t => t.name);
-                            const external = membersArr.filter(name => name !== currentUser.name && !teacherNames.includes(name));
-                            setPlcExternalMembers(external.join(', '));
-                            
                             setIsPlcModalOpen(true);
                           }}
                         >
@@ -1705,13 +1756,30 @@ export default function TeacherDashboard({
                         style={{ width: '100%', padding: '0.5rem', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}
                         disabled={!currentUser.plcGroup}
                         onClick={() => {
+                          if (Number(cycle.cycleNum) === 4) {
+                            const c3Sup = supervisions.find(
+                              s => s.teacherId === currentUser.id && s.academicYear === selectedPlcYear
+                            );
+                            if (!c3Sup) {
+                              alert('กรุณาดำเนินการขอรับการนิเทศในวงรอบที่ 3 ก่อน เพื่อใช้ข้อมูลในวงรอบที่ 4');
+                              return;
+                            }
+                            const c3DateStr = c3Sup.date ? `${formatThaiDate(c3Sup.date)} (${c3Sup.time})` : 'รอกำหนดเวลาจากฝ่ายวิชาการ';
+                            setPlcDate(c3DateStr);
+                            setPlcLocation(c3Sup.location || 'ไม่ได้ระบุสถานที่');
+                            const supervisorNames = c3Sup.supervisors ? c3Sup.supervisors.map(s => s.name) : [];
+                            setPlcCheckedTeachers(supervisorNames);
+                            setPlcExternalMembers('');
+                            setPlcOutcome('สะท้อนผลการจัดกิจกรรมการเรียนรู้และนำเสนอแผนการจัดการเรียนรู้ที่ได้รับการพัฒนาปรับปรุงเรียบร้อยแล้ว');
+                          } else {
+                            setPlcDate('');
+                            setPlcLocation('');
+                            setPlcCheckedTeachers([]);
+                            setPlcExternalMembers('');
+                            setPlcOutcome('');
+                          }
                           setSelectedPlcLog(null);
                           setPlcModalCycle(cycle.cycleNum);
-                          setPlcDate('');
-                          setPlcLocation('');
-                          setPlcCheckedTeachers([]);
-                          setPlcExternalMembers('');
-                          setPlcOutcome('');
                           setPlcImages([]);
                           setPlcRevisedPlanUrl('');
                           setIsPlcModalOpen(true);
@@ -1779,74 +1847,95 @@ export default function TeacherDashboard({
                   }
                 </div>
 
-                <div className="form-group">
-                  <label>วัน เดือน ปี และเวลา (เช่น 24 มิ.ย. 2569 เวลา 13.00 น.)</label>
-                  <input
-                    type="text"
-                    value={plcDate}
-                    onChange={(e) => setPlcDate(e.target.value)}
-                    placeholder="เช่น 24 มิถุนายน 2569 เวลา 13.00 น."
-                    required
-                  />
-                </div>
+                {Number(plcModalCycle) === 4 ? (
+                  (() => {
+                    const c3Sup = supervisions.find(
+                      s => s.teacherId === currentUser.id && s.academicYear === selectedPlcYear
+                    );
+                    const supervisorNames = c3Sup?.supervisors ? c3Sup.supervisors.map(s => s.name) : [];
+                    const finalMembers = [currentUser.name, ...supervisorNames].join(', ');
+                    
+                    return (
+                      <div style={{ backgroundColor: '#f8fafc', padding: '1rem', borderRadius: 'var(--radius-sm)', border: '1px solid #e2e8f0', marginBottom: '1.25rem', fontSize: '13px', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                        <div style={{ fontWeight: 700, color: 'var(--primary-color)', borderBottom: '1px dashed #e2e8f0', paddingBottom: '0.4rem', marginBottom: '0.2rem' }}>📋 ข้อมูลการนิเทศการสอน (ดึงมาจากวงรอบที่ 3 อัตโนมัติ):</div>
+                        <div><strong>📅 วัน-เวลานิเทศ:</strong> {c3Sup?.date ? `${formatThaiDate(c3Sup.date)} (${c3Sup.time})` : <span style={{ color: '#e67e22', fontStyle: 'italic' }}>รอกำหนดเวลานิเทศจากฝ่ายวิชาการ</span>}</div>
+                        <div><strong>📍 สถานที่สอน:</strong> {c3Sup?.location || 'ไม่ได้ระบุ'}</div>
+                        <div><strong>👥 ผู้เข้าร่วมนิเทศ (สมาชิก):</strong> {finalMembers}</div>
+                      </div>
+                    );
+                  })()
+                ) : (
+                  <>
+                    <div className="form-group">
+                      <label>วัน เดือน ปี และเวลา (เช่น 24 มิ.ย. 2569 เวลา 13.00 น.)</label>
+                      <input
+                        type="text"
+                        value={plcDate}
+                        onChange={(e) => setPlcDate(e.target.value)}
+                        placeholder="เช่น 24 มิถุนายน 2569 เวลา 13.00 น."
+                        required
+                      />
+                    </div>
 
-                <div className="form-group">
-                  <label>สถานที่ (เช่น ห้องสมุด, ห้องประชุมกลุ่มสาระคณิตศาสตร์)</label>
-                  <input
-                    type="text"
-                    value={plcLocation}
-                    onChange={(e) => setPlcLocation(e.target.value)}
-                    placeholder="เช่น ห้องปฏิบัติการฟิสิกส์ หรือ อาคารอเนกประสงค์"
-                    required
-                  />
-                </div>
+                    <div className="form-group">
+                      <label>สถานที่ (เช่น ห้องสมุด, ห้องประชุมกลุ่มสาระคณิตศาสตร์)</label>
+                      <input
+                        type="text"
+                        value={plcLocation}
+                        onChange={(e) => setPlcLocation(e.target.value)}
+                        placeholder="เช่น ห้องปฏิบัติการฟิสิกส์ หรือ อาคารอเนกประสงค์"
+                        required
+                      />
+                    </div>
 
-                <div className="form-group">
-                  <label>สมาชิกผู้เข้าร่วมกิจกรรม PLC ในโรงเรียน (เลือกจากรายชื่อบุคลากร)</label>
-                  <div style={{ maxHeight: '150px', overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: '4px', padding: '0.5rem', backgroundColor: '#fafafa' }}>
-                    {teachers.filter(t => t.id !== currentUser.id).length === 0 ? (
-                      <span style={{ fontSize: '12px', color: 'var(--text-light)', fontStyle: 'italic' }}>ไม่พบรายชื่อครูคนอื่นในระบบ</span>
-                    ) : (
-                      teachers.filter(t => t.id !== currentUser.id).map(t => (
-                        <label key={t.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.2rem 0', cursor: 'pointer', fontSize: '13px' }}>
-                          <input
-                            type="checkbox"
-                            checked={plcCheckedTeachers.includes(t.name)}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setPlcCheckedTeachers([...plcCheckedTeachers, t.name]);
-                              } else {
-                                setPlcCheckedTeachers(plcCheckedTeachers.filter(name => name !== t.name));
-                              }
-                            }}
-                          />
-                          <span>{t.name} ({t.position?.split(' (')[0] || t.role})</span>
-                        </label>
-                      ))
-                    )}
-                  </div>
-                </div>
+                    <div className="form-group">
+                      <label>สมาชิกผู้เข้าร่วมกิจกรรม PLC ในโรงเรียน (เลือกจากรายชื่อบุคลากร)</label>
+                      <div style={{ maxHeight: '150px', overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: '4px', padding: '0.5rem', backgroundColor: '#fafafa' }}>
+                        {teachers.filter(t => t.id !== currentUser.id).length === 0 ? (
+                          <span style={{ fontSize: '12px', color: 'var(--text-light)', fontStyle: 'italic' }}>ไม่พบรายชื่อครูคนอื่นในระบบ</span>
+                        ) : (
+                          teachers.filter(t => t.id !== currentUser.id).map(t => (
+                            <label key={t.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.2rem 0', cursor: 'pointer', fontSize: '13px' }}>
+                              <input
+                                type="checkbox"
+                                checked={plcCheckedTeachers.includes(t.name)}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setPlcCheckedTeachers([...plcCheckedTeachers, t.name]);
+                                  } else {
+                                    setPlcCheckedTeachers(plcCheckedTeachers.filter(name => name !== t.name));
+                                  }
+                                }}
+                              />
+                              <span>{t.name} ({t.position?.split(' (')[0] || t.role})</span>
+                            </label>
+                          ))
+                        )}
+                      </div>
+                    </div>
 
-                <div className="form-group">
-                  <label>ระบุชื่อสมาชิกภายนอกเพิ่มเติม (ถ้ามี, คั่นด้วยเครื่องหมายจุลภาค ',')</label>
-                  <input
-                    type="text"
-                    value={plcExternalMembers}
-                    onChange={(e) => setPlcExternalMembers(e.target.value)}
-                    placeholder="เช่น ศึกษานิเทศก์สมรศรี, อาจารย์ภายนอก"
-                  />
-                </div>
+                    <div className="form-group">
+                      <label>ระบุชื่อสมาชิกภายนอกเพิ่มเติม (ถ้ามี, คั่นด้วยเครื่องหมายจุลภาค ',')</label>
+                      <input
+                        type="text"
+                        value={plcExternalMembers}
+                        onChange={(e) => setPlcExternalMembers(e.target.value)}
+                        placeholder="เช่น ศึกษานิเทศก์สมรศรี, อาจารย์ภายนอก"
+                      />
+                    </div>
 
-                <div className="form-group">
-                  <label>ผลการดำเนินงานกิจกรรม PLC ในวงรอบนี้</label>
-                  <textarea
-                    rows="5"
-                    value={plcOutcome}
-                    onChange={(e) => setPlcOutcome(e.target.value)}
-                    placeholder="ระบุรายละเอียดผลลัพธ์การประชุม ปัญหาที่วิเคราะห์ นวัตกรรมที่ออกแบบ การสะท้อนผล หรือขยายผล..."
-                    required
-                  ></textarea>
-                </div>
+                    <div className="form-group">
+                      <label>ผลการดำเนินงานกิจกรรม PLC ในวงรอบนี้</label>
+                      <textarea
+                        rows="5"
+                        value={plcOutcome}
+                        onChange={(e) => setPlcOutcome(e.target.value)}
+                        placeholder="ระบุรายละเอียดผลลัพธ์การประชุม ปัญหาที่วิเคราะห์ นวัตกรรมที่ออกแบบ การสะท้อนผล หรือขยายผล..."
+                        required
+                      ></textarea>
+                    </div>
+                  </>
+                )}
 
                 {Number(plcModalCycle) === 3 ? (
                   <div style={{ backgroundColor: '#fafafa', padding: '0.75rem', borderRadius: '4px', border: '1px solid #eee', fontSize: '13px', color: 'var(--text-medium)', marginBottom: '1rem' }}>
@@ -2139,6 +2228,17 @@ export default function TeacherDashboard({
                       <option value="4">ห้อง 4</option>
                     </select>
                   </div>
+                </div>
+
+                <div className="form-group">
+                  <label style={{ fontWeight: 600 }}>สถานที่จัดกิจกรรมการสอน/ห้องเรียนที่รับการนิเทศ</label>
+                  <input
+                    type="text"
+                    value={bookingLocation}
+                    onChange={(e) => setBookingLocation(e.target.value)}
+                    placeholder="เช่น ห้องปฏิบัติการชีววิทยา หรือ ห้องเรียน 421"
+                    required
+                  />
                 </div>
 
                 <div className="form-group">
