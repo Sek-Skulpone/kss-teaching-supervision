@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, CheckCircle2, Clock, AlertTriangle, BookOpen } from 'lucide-react';
+import { useState } from 'react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 const MONTHS_TH = [
   'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
@@ -149,7 +149,15 @@ export default function Calendar({ supervisions, onEventClick }) {
                       <div
                         key={event.id}
                         className={eventClass}
+                        role="button"
+                        tabIndex={0}
                         onClick={() => onEventClick(event)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            onEventClick(event);
+                          }
+                        }}
                         title={`${event.time} น. - ${event.subject} (${event.teacherName})`}
                       >
                         {event.time} {event.subject}

@@ -1,0 +1,40 @@
+rules_version = '2';
+
+// Baseline Firestore Security Rules for the KS Teaching Supervision app.
+//
+// IMPORTANT — this file is NOT automatically deployed by this repository.
+// It must be pasted into (or deployed to) the Firebase Console for the
+// project manually; see the "Security" section of README.md for details.
+//
+// Current state: this app has no Firebase Authentication wired into the
+// client yet (login is handled entirely against a Firestore document with
+// application-level username/password checks, see src/db.js and
+// src/App.jsx). That means `request.auth` will always be null for every
+// request this app makes today, so a rule of `if request.auth != null`
+// would currently reject 100% of the app's own reads/writes.
+//
+// There is no rule that is both (a) meaningfully more restrictive than
+// "wide open" and (b) compatible with how the app currently talks to
+// Firestore, because the app has no way to prove who's calling. Rather
+// than ship a rule that either does nothing (`if true`) or breaks the app
+// outright, this file is written for the *target* state: real Firebase
+// Authentication in front of Firestore. Wiring that in (e.g. Firebase Auth
+// custom tokens or anonymous auth issued after a verified login) is a
+// separate, larger follow-up not done in this pass.
+//
+// Deploy this once Firebase Authentication is integrated:
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // The app stores all of its data in a single "system_db" collection
+    // (see src/db.js). Once requests are authenticated, only allow signed-in
+    // callers to read/write it.
+    match /system_db/{docId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // Deny everything else by default.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

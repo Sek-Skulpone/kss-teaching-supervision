@@ -109,3 +109,11 @@
    git commit -m "อธิบายสิ่งที่แก้ไข เช่น เพิ่มแท็กระบุหมวดหมู่"
    git push origin main
    ```
+
+---
+
+## Security
+
+- **Passwords are hashed, but the database is not yet locked down.** Passwords are stored as bcrypt hashes (see `src/utils/auth.js`) and legacy plaintext accounts are migrated to a hash automatically on next successful login. That stops passwords from being readable at rest or displayed in the UI, but it does **not** by itself secure the database — the Firebase config shipped in the built JS bundle is enough for anyone to talk to Firestore directly, bypassing the app entirely, until real Firestore Security Rules and Firebase Authentication are both in place.
+- **Firestore Security Rules must be deployed via the Firebase Console.** A baseline rules file is included at [`firestore.rules`](./firestore.rules), but this repository has no way to deploy it automatically (no `gh`/Firebase CLI access wired into CI). Whoever administers the Firebase project needs to paste `firestore.rules` into **Firebase Console → Firestore Database → Rules** (or deploy it with the Firebase CLI) by hand. As written, that rules file assumes Firebase Authentication is wired into the client — which this app does not yet do (see the comment at the top of the file) — so integrating real Firebase Auth is a required follow-up before the rules file will do anything useful.
+- **The live production Firestore currently rejects all reads/writes.** As of this writing, requests from the deployed app to Firestore fail with `permission-denied`. In practice this means the deployed app is running in local-only, no-sync mode (falling back to `localStorage`) for real users until whatever rules currently exist in the Firebase Console are fixed. This is a Firebase Console configuration issue, not something fixable from this repository's code.

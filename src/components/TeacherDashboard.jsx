@@ -1,14 +1,11 @@
-import React, { useState } from 'react';
-import { 
-  BookOpen, 
-  Calendar as CalendarIcon, 
-  ClipboardList, 
-  CheckCircle2, 
-  AlertCircle, 
-  FileText, 
-  Send, 
-  User, 
-  ChevronRight, 
+import { useState } from 'react';
+import {
+  BookOpen,
+  ClipboardList,
+  CheckCircle2,
+  AlertCircle,
+  FileText,
+  Send,
   Clock,
   Trash2,
   Edit,
@@ -20,61 +17,9 @@ import {
 } from 'lucide-react';
 import EvaluationModal from './EvaluationModal';
 import EvaluationSummaryModal from './EvaluationSummaryModal';
-
-const resizeImage = (file) => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = (e) => {
-      const img = new Image();
-      img.src = e.target.result;
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        let width = img.width;
-        let height = img.height;
-        const MAX_WIDTH = 800;
-        const MAX_HEIGHT = 800;
-
-        if (width > height) {
-          if (width > MAX_WIDTH) {
-            height *= MAX_WIDTH / width;
-            width = MAX_WIDTH;
-          }
-        } else {
-          if (height > MAX_HEIGHT) {
-            width *= MAX_HEIGHT / height;
-            height = MAX_HEIGHT;
-          }
-        }
-
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, width, height);
-
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
-        resolve(dataUrl);
-      };
-      img.onerror = (err) => {
-        reject(err);
-      };
-    };
-    reader.onerror = (err) => {
-      reject(err);
-    };
-  });
-};
-
-
-const PERIODS_LIST = [
-  'คาบที่ 1 (08.30 - 09.20 น.)',
-  'คาบที่ 2 (09.20 - 10.10 น.)',
-  'คาบที่ 3 (10.20 - 11.10 น.)',
-  'คาบที่ 4 (11.10 - 12.00 น.)',
-  'คาบที่ 5 (13.00 - 13.50 น.)',
-  'คาบที่ 6 (13.50 - 14.40 น.)',
-  'คาบที่ 7 (14.40 - 15.30 น.)'
-];
+import { resizeImage } from '../utils/imageResize';
+import { formatThaiDate } from '../utils/thaiDate';
+import { getStatusLabel } from '../utils/statusLabels';
 
 export default function TeacherDashboard({
   currentUser,
@@ -101,20 +46,25 @@ export default function TeacherDashboard({
   const [subject, setSubject] = useState('');
   const [grade, setGrade] = useState('ม.1');
   const [room, setRoom] = useState('1');
-  const [date, setDate] = useState('');
-  const [time, setTime] = useState('');
   const [planUrl, setPlanUrl] = useState('');
   const [bookingLocation, setBookingLocation] = useState('');
   const [selectedPlcYear, setSelectedPlcYear] = useState(settings.currentAcademicYear || '2569');
   const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
+  const [isSubmittingRequest, setIsSubmittingRequest] = useState(false);
 
-  React.useEffect(() => {
-    if (settings.currentAcademicYear) {
-      setSelectedPlcYear(settings.currentAcademicYear);
-    }
-  }, [settings.currentAcademicYear]);
+  // The "current academic year" always follows the system-wide setting
+  // whenever it changes (even overriding a prior local selection), so this
+  // is a genuine prop-change-driven adjustment. It's handled during render
+  // (React's recommended alternative for this exact case) instead of via
+  // useEffect, since calling setState directly inside an effect body is
+  // discouraged (react-hooks/set-state-in-effect).
+  const [syncedPlcYear, setSyncedPlcYear] = useState(undefined);
+  if (settings.currentAcademicYear && settings.currentAcademicYear !== syncedPlcYear) {
+    setSyncedPlcYear(settings.currentAcademicYear);
+    setSelectedPlcYear(settings.currentAcademicYear);
+  }
+
   const [requestError, setRequestError] = useState('');
-  const [requestSuccess, setRequestSuccess] = useState('');
 
   // 2. Term Lesson Plan Form States
   const [termYear, setTermYear] = useState('2569');
@@ -125,6 +75,7 @@ export default function TeacherDashboard({
   const [termPlanUrl, setTermPlanUrl] = useState('');
   const [termError, setTermError] = useState('');
   const [termSuccess, setTermSuccess] = useState('');
+  const [isSubmittingTermPlan, setIsSubmittingTermPlan] = useState(false);
 
   // 3. Modals and Editors States
   // A. Post Teaching Record Form States
@@ -132,6 +83,7 @@ export default function TeacherDashboard({
   const [studentOutcome, setStudentOutcome] = useState('');
   const [problems, setProblems] = useState('');
   const [solutions, setSolutions] = useState('');
+  const [isSubmittingRecord, setIsSubmittingRecord] = useState(false);
 
   // B. Edit Supervision Request Form States
   const [editingSupervision, setEditingSupervision] = useState(null);
@@ -145,7 +97,6 @@ export default function TeacherDashboard({
 
   // C. Post Lesson Record for Term Plan States
   const [selectedTermPlan, setSelectedTermPlan] = useState(null);
-  const [postLessonOutcome, setPostLessonOutcome] = useState('');
   const [postLessonType, setPostLessonType] = useState('pdf'); // 'pdf' | 'link'
   const [postLessonFile, setPostLessonFile] = useState(''); // base64
   const [postLessonLink, setPostLessonLink] = useState('');
@@ -171,6 +122,7 @@ export default function TeacherDashboard({
   const [plcImages, setPlcImages] = useState([]);
   const [plcRevisedPlanUrl, setPlcRevisedPlanUrl] = useState('');
   const [isResizingPlc, setIsResizingPlc] = useState(false);
+  const [isSubmittingPlc, setIsSubmittingPlc] = useState(false);
   const [activePlcLightbox, setActivePlcLightbox] = useState(null);
 
   // G. One-Page Report States
@@ -188,7 +140,6 @@ export default function TeacherDashboard({
     setPostLessonFile(plan.postLessonRecord?.type === 'pdf' ? plan.postLessonRecord.fileData : '');
     setPostLessonLink(plan.postLessonRecord?.type === 'link' ? plan.postLessonRecord.fileUrl : '');
     setPostLessonFileName(plan.postLessonRecord?.type === 'pdf' ? 'ไฟล์เดิมที่อัปโหลดไว้.pdf' : '');
-    setPostLessonOutcome(plan.postLessonRecord?.outcome || '');
     setPostLessonFileError('');
   };
 
@@ -418,32 +369,37 @@ export default function TeacherDashboard({
       logData.revisedPlanUrl = plcRevisedPlanUrl.trim();
     }
 
-    let success = false;
-    if (selectedPlcLog) {
-      success = await onUpdatePlcLog(selectedPlcLog.id, logData);
-      if (success) {
-        alert(`แก้ไขข้อมูลกิจกรรม PLC วงรอบที่ ${plcModalCycle} สำเร็จเรียบร้อยแล้ว`);
+    setIsSubmittingPlc(true);
+    try {
+      let success;
+      if (selectedPlcLog) {
+        success = await onUpdatePlcLog(selectedPlcLog.id, logData);
+        if (success) {
+          alert(`แก้ไขข้อมูลกิจกรรม PLC วงรอบที่ ${plcModalCycle} สำเร็จเรียบร้อยแล้ว`);
+        }
+      } else {
+        const addedLog = await onAddPlcLog(logData);
+        success = !!addedLog;
+        if (success) {
+          alert(`บันทึกกิจกรรม PLC วงรอบที่ ${plcModalCycle} สำเร็จเรียบร้อยแล้ว`);
+        }
       }
-    } else {
-      const addedLog = await onAddPlcLog(logData);
-      success = !!addedLog;
-      if (success) {
-        alert(`บันทึกกิจกรรม PLC วงรอบที่ ${plcModalCycle} สำเร็จเรียบร้อยแล้ว`);
-      }
-    }
 
-    if (success) {
-      setIsPlcModalOpen(false);
-      setSelectedPlcLog(null);
-      setPlcDate('');
-      setPlcLocation('');
-      setPlcCheckedTeachers([]);
-      setPlcExternalMembers('');
-      setPlcOutcome('');
-      setPlcImages([]);
-      setPlcRevisedPlanUrl('');
-    } else {
-      alert('เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง');
+      if (success) {
+        setIsPlcModalOpen(false);
+        setSelectedPlcLog(null);
+        setPlcDate('');
+        setPlcLocation('');
+        setPlcCheckedTeachers([]);
+        setPlcExternalMembers('');
+        setPlcOutcome('');
+        setPlcImages([]);
+        setPlcRevisedPlanUrl('');
+      } else {
+        alert('เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง');
+      }
+    } finally {
+      setIsSubmittingPlc(false);
     }
   };
 
@@ -465,29 +421,34 @@ export default function TeacherDashboard({
       setRequestError('กรุณากรอกข้อมูลให้ครบถ้วนทุกช่อง');
       return;
     }
-    
-    const added = await onAddSupervision({
-      teacherId: currentUser.id,
-      teacherName: currentUser.name,
-      subject,
-      grade,
-      room,
-      location: bookingLocation.trim(),
-      date: '', // Academic Department will schedule this
-      time: '', // Academic Department will schedule this
-      lessonPlanUrl: planUrl,
-      academicYear: selectedPlcYear
-    });
 
-    if (added) {
-      setSubject('');
-      setPlanUrl('');
-      setBookingLocation('');
-      setRequestError('');
-      setIsBookingModalOpen(false);
-      alert('ส่งคำขอและอัปโหลดแผนการสอนเรียบร้อยแล้ว! ฝ่ายวิชาการจะเป็นผู้กำหนดวันและเวลานิเทศการสอน');
-    } else {
-      setRequestError('เกิดข้อผิดพลาดในการส่งข้อมูลการจอง กรุณาลองใหม่อีกครั้ง');
+    setIsSubmittingRequest(true);
+    try {
+      const added = await onAddSupervision({
+        teacherId: currentUser.id,
+        teacherName: currentUser.name,
+        subject,
+        grade,
+        room,
+        location: bookingLocation.trim(),
+        date: '', // Academic Department will schedule this
+        time: '', // Academic Department will schedule this
+        lessonPlanUrl: planUrl,
+        academicYear: selectedPlcYear
+      });
+
+      if (added) {
+        setSubject('');
+        setPlanUrl('');
+        setBookingLocation('');
+        setRequestError('');
+        setIsBookingModalOpen(false);
+        alert('ส่งคำขอและอัปโหลดแผนการสอนเรียบร้อยแล้ว! ฝ่ายวิชาการจะเป็นผู้กำหนดวันและเวลานิเทศการสอน');
+      } else {
+        setRequestError('เกิดข้อผิดพลาดในการส่งข้อมูลการจอง กรุณาลองใหม่อีกครั้ง');
+      }
+    } finally {
+      setIsSubmittingRequest(false);
     }
   };
 
@@ -503,6 +464,8 @@ export default function TeacherDashboard({
       subject: editSubject,
       grade: editGrade,
       room: editRoom,
+      date: editDate,
+      time: editTime,
       lessonPlanUrl: editPlanUrl,
       location: editLocation.trim()
     });
@@ -528,24 +491,33 @@ export default function TeacherDashboard({
   };
 
   // Handle Post Teaching Record Submit
-  const handlePostRecordSubmit = (e) => {
+  const handlePostRecordSubmit = async (e) => {
     e.preventDefault();
     if (!studentOutcome || !problems || !solutions) {
       alert('กรุณากรอกข้อมูลให้ครบทุกหัวข้อ');
       return;
     }
 
-    onSubmitPostRecord(selectedSupervision.id, {
-      studentOutcome,
-      problems,
-      solutions
-    });
+    setIsSubmittingRecord(true);
+    try {
+      const success = await onSubmitPostRecord(selectedSupervision.id, {
+        studentOutcome,
+        problems,
+        solutions
+      });
 
-    setSelectedSupervision(null);
-    setStudentOutcome('');
-    setProblems('');
-    setSolutions('');
-    alert('บันทึกหลังการสอนเสร็จสิ้นและปรับปรุงข้อมูลเรียบร้อย!');
+      if (success) {
+        setSelectedSupervision(null);
+        setStudentOutcome('');
+        setProblems('');
+        setSolutions('');
+        alert('บันทึกหลังการสอนเสร็จสิ้นและปรับปรุงข้อมูลเรียบร้อย!');
+      } else {
+        alert('เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง');
+      }
+    } finally {
+      setIsSubmittingRecord(false);
+    }
   };
 
   // Handle Classroom Evaluation Submit handled by imported component
@@ -561,25 +533,30 @@ export default function TeacherDashboard({
       return;
     }
 
-    const success = await onRegisterTermPlan({
-      teacherId: currentUser.id,
-      teacherName: currentUser.name,
-      academicYear: termYear,
-      term: termSemester,
-      subjectCode: termSubjectCode.trim().toUpperCase(),
-      subjectName: termSubjectName.trim(),
-      grade: termGrade,
-      lessonPlanUrl: termPlanUrl.trim()
-    });
+    setIsSubmittingTermPlan(true);
+    try {
+      const success = await onRegisterTermPlan({
+        teacherId: currentUser.id,
+        teacherName: currentUser.name,
+        academicYear: termYear,
+        term: termSemester,
+        subjectCode: termSubjectCode.trim().toUpperCase(),
+        subjectName: termSubjectName.trim(),
+        grade: termGrade,
+        lessonPlanUrl: termPlanUrl.trim()
+      });
 
-    if (success) {
-      setTermSubjectCode('');
-      setTermSubjectName('');
-      setTermPlanUrl('');
-      setTermSuccess('อัปโหลดและบันทึกแผนการจัดการเรียนรู้ประจำภาคเรียนเรียบร้อยแล้ว!');
-      setTimeout(() => setTermSuccess(''), 4000);
-    } else {
-      setTermError('เกิดข้อผิดพลาดในการส่งแผนการสอน กรุณาลองใหม่อีกครั้ง');
+      if (success) {
+        setTermSubjectCode('');
+        setTermSubjectName('');
+        setTermPlanUrl('');
+        setTermSuccess('อัปโหลดและบันทึกแผนการจัดการเรียนรู้ประจำภาคเรียนเรียบร้อยแล้ว!');
+        setTimeout(() => setTermSuccess(''), 4000);
+      } else {
+        setTermError('เกิดข้อผิดพลาดในการส่งแผนการสอน กรุณาลองใหม่อีกครั้ง');
+      }
+    } finally {
+      setIsSubmittingTermPlan(false);
     }
   };
 
@@ -587,7 +564,7 @@ export default function TeacherDashboard({
   const handlePostLessonSubmit = async (e) => {
     e.preventDefault();
 
-    let recordData = {};
+    let recordData;
 
     if (postLessonType === 'pdf') {
       if (!postLessonFile) {
@@ -671,16 +648,6 @@ export default function TeacherDashboard({
     return count;
   })();
 
-  const formatThaiDate = (dateStr) => {
-    if (!dateStr) return '';
-    const parts = dateStr.split('-');
-    if (parts.length !== 3) return dateStr;
-    const yearTh = parseInt(parts[0]) + 543;
-    const monthIndex = parseInt(parts[1]) - 1;
-    const day = parseInt(parts[2]);
-    const monthsShort = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
-    return `${day} ${monthsShort[monthIndex]} ${yearTh}`;
-  };
 
   // Helper functions handled by imported components
 
@@ -816,8 +783,8 @@ export default function TeacherDashboard({
                 />
               </div>
 
-              <button type="submit" className="btn btn-primary" style={{ width: '100%', padding: '0.75rem', marginTop: '0.5rem' }}>
-                <Send size={16} /> ส่งแผนประจำเทอม
+              <button type="submit" className="btn btn-primary" style={{ width: '100%', padding: '0.75rem', marginTop: '0.5rem' }} disabled={isSubmittingTermPlan}>
+                <Send size={16} /> {isSubmittingTermPlan ? 'กำลังส่ง...' : 'ส่งแผนประจำเทอม'}
               </button>
             </form>
           </div>
@@ -868,7 +835,11 @@ export default function TeacherDashboard({
                                 onClick={() => {
                                   if (plan.postLessonRecord.type === 'pdf') {
                                     const newWindow = window.open();
-                                    newWindow.document.write(`<iframe src="${plan.postLessonRecord.fileData}" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`);
+                                    if (newWindow) {
+                                      newWindow.document.write(`<iframe src="${plan.postLessonRecord.fileData}" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`);
+                                    } else {
+                                      alert('เบราว์เซอร์บล็อกป็อปอัป กรุณาอนุญาตป็อปอัปสำหรับเว็บไซต์นี้');
+                                    }
                                   } else if (plan.postLessonRecord.type === 'link') {
                                     window.open(plan.postLessonRecord.fileUrl, '_blank');
                                   } else {
@@ -919,7 +890,7 @@ export default function TeacherDashboard({
               <div className="modal-content" style={{ maxWidth: '500px' }}>
                 <div className="modal-header">
                   <h3>บันทึกข้อเสนอแนะ/รายงานหลังแผนการจัดการเรียนรู้</h3>
-                  <button className="modal-close-btn" onClick={() => setSelectedTermPlan(null)}>×</button>
+                  <button className="modal-close-btn" aria-label="ปิดหน้าต่าง" onClick={() => setSelectedTermPlan(null)}>×</button>
                 </div>
                 <form onSubmit={handlePostLessonSubmit}>
                   <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -1070,10 +1041,7 @@ export default function TeacherDashboard({
                       </td>
                       <td>
                         <span className={`badge badge-${req.status}`}>
-                          {req.status === 'pending' && 'อยู่ระหว่างจัดสรรคณะกรรมการ'}
-                          {req.status === 'pending_approval' && 'อยู่ระหว่างพิจารณาผู้เสนอความจำนง'}
-                          {req.status === 'approved' && 'แต่งตั้งคณะกรรมการเสร็จสิ้น'}
-                          {req.status === 'completed' && 'รายงานผลเสร็จสิ้น'}
+                          {getStatusLabel(req.status, 'list')}
                         </span>
                       </td>
 
@@ -1390,7 +1358,16 @@ export default function TeacherDashboard({
                               {imagesToShow.map((img, idx) => (
                                 <div
                                   key={idx}
+                                  role="button"
+                                  tabIndex={0}
+                                  aria-label={`ดูภาพหลักฐาน ${idx + 1}`}
                                   onClick={() => setActivePlcLightbox(img)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter' || e.key === ' ') {
+                                      e.preventDefault();
+                                      setActivePlcLightbox(img);
+                                    }
+                                  }}
                                   style={{ width: '100%', aspectRatio: '4/3', borderRadius: '4px', overflow: 'hidden', border: '1px solid #cbd5e1', cursor: 'pointer' }}
                                 >
                                   <img src={img} alt={`PLC log photo ${idx}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -1743,7 +1720,7 @@ export default function TeacherDashboard({
               <h3>
                 {selectedPlcLog ? 'แก้ไขบันทึกกิจกรรม PLC' : 'เพิ่มบันทึกกิจกรรม PLC'}: วงรอบที่ {plcModalCycle}
               </h3>
-              <button className="modal-close-btn" onClick={() => setIsPlcModalOpen(false)}>×</button>
+              <button className="modal-close-btn" aria-label="ปิดหน้าต่าง" onClick={() => setIsPlcModalOpen(false)}>×</button>
             </div>
             <form onSubmit={handlePlcSubmit}>
               <div className="modal-body" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
@@ -1911,8 +1888,8 @@ export default function TeacherDashboard({
               </div>
               <div className="modal-footer">
                 <button type="button" className="btn btn-outline" onClick={() => setIsPlcModalOpen(false)}>ยกเลิก</button>
-                <button type="submit" className="btn btn-primary" disabled={isResizingPlc}>
-                  {isResizingPlc ? 'กำลังบันทึกภาพ...' : 'บันทึกข้อมูล'}
+                <button type="submit" className="btn btn-primary" disabled={isResizingPlc || isSubmittingPlc}>
+                  {isResizingPlc ? 'กำลังบันทึกภาพ...' : (isSubmittingPlc ? 'กำลังบันทึก...' : 'บันทึกข้อมูล')}
                 </button>
               </div>
             </form>
@@ -1940,6 +1917,7 @@ export default function TeacherDashboard({
         >
           <button
             onClick={() => setActivePlcLightbox(null)}
+            aria-label="ปิดรูปภาพ"
             style={{
               position: 'absolute',
               top: '20px',
@@ -1982,7 +1960,7 @@ export default function TeacherDashboard({
           <div className="modal-content" style={{ maxWidth: '520px', width: '90%' }}>
             <div className="modal-header">
               <h3>รายงานการนิเทศหน้าเดียว (One-Page Report)</h3>
-              <button className="modal-close-btn" onClick={() => setIsOnePageModalOpen(false)}>×</button>
+              <button className="modal-close-btn" aria-label="ปิดหน้าต่าง" onClick={() => setIsOnePageModalOpen(false)}>×</button>
             </div>
             <form onSubmit={handleOnePageSubmit}>
               <div className="modal-body">
@@ -2094,7 +2072,7 @@ export default function TeacherDashboard({
                   <h3>
                     บันทึกรายงานผลหลังการจัดการเรียนรู้: รายวิชา {selectedSupervision.subject}
                   </h3>
-                  <button className="modal-close-btn" onClick={() => setSelectedSupervision(null)}>×</button>
+                  <button className="modal-close-btn" aria-label="ปิดหน้าต่าง" onClick={() => setSelectedSupervision(null)}>×</button>
                 </div>
                 <form onSubmit={handlePostRecordSubmit}>
                   <div className="modal-body">
@@ -2139,7 +2117,7 @@ export default function TeacherDashboard({
                   </div>
                   <div className="modal-footer">
                     <button type="button" className="btn btn-outline" onClick={() => setSelectedSupervision(null)}>ยกเลิก</button>
-                    <button type="submit" className="btn btn-primary">บันทึกรายงานผล</button>
+                    <button type="submit" className="btn btn-primary" disabled={isSubmittingRecord}>{isSubmittingRecord ? 'กำลังบันทึก...' : 'บันทึกรายงานผล'}</button>
                   </div>
                 </form>
               </div>
@@ -2152,7 +2130,7 @@ export default function TeacherDashboard({
               <div className="modal-content" style={{ maxWidth: '520px' }}>
                 <div className="modal-header">
                   <h3>แก้ไขข้อมูลคำขอรับการนิเทศการสอน</h3>
-                  <button className="modal-close-btn" onClick={() => setEditingSupervision(null)}>×</button>
+                  <button className="modal-close-btn" aria-label="ปิดหน้าต่าง" onClick={() => setEditingSupervision(null)}>×</button>
                 </div>
                 <form onSubmit={handleEditSupervisionSubmit}>
                   <div className="modal-body">
@@ -2227,7 +2205,7 @@ export default function TeacherDashboard({
                 <BookOpen size={20} style={{ marginRight: '0.4rem', verticalAlign: 'middle', display: 'inline-block' }} />
                 จองเวลานิเทศการเรียนการสอนรายบุคคล ({selectedPlcYear})
               </h3>
-              <button className="modal-close-btn" onClick={() => setIsBookingModalOpen(false)}>×</button>
+              <button className="modal-close-btn" aria-label="ปิดหน้าต่าง" onClick={() => setIsBookingModalOpen(false)}>×</button>
             </div>
             <form onSubmit={handleRequestSubmit}>
               <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -2297,9 +2275,9 @@ export default function TeacherDashboard({
               </div>
               <div className="modal-footer">
                 <button type="button" className="btn btn-outline" onClick={() => setIsBookingModalOpen(false)}>ยกเลิก</button>
-                <button type="submit" className="btn btn-primary">
+                <button type="submit" className="btn btn-primary" disabled={isSubmittingRequest}>
                   <Send size={14} style={{ marginRight: '0.25rem', display: 'inline-block', verticalAlign: 'middle' }} />
-                  ส่งคำขอจองและบันทึกแผน
+                  {isSubmittingRequest ? 'กำลังส่ง...' : 'ส่งคำขอจองและบันทึกแผน'}
                 </button>
               </div>
             </form>

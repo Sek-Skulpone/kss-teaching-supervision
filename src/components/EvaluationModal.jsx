@@ -1,112 +1,55 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Camera, Upload, X } from 'lucide-react';
+import { OBSERVATION_ITEMS } from '../utils/observationItems';
+import { resizeImage } from '../utils/imageResize';
+import { formatThaiDate } from '../utils/thaiDate';
 
-const OBSERVATION_ITEMS = [
-  { id: '1_1', no: '1.1', label: 'มีแผนการจัดการเรียนรู้ที่ใช้ประกอบการเรียนการสอน', group: '1. แผนการจัดการเรียนรู้' },
-  { id: '1_2', no: '1.2', label: 'การกำหนดจุดประสงค์การเรียนรู้ตามตัวชี้วัดตามหลักสูตร / ผลการเรียนรู้', group: '1. แผนการจัดการเรียนรู้' },
-  { id: '1_3', no: '1.3', label: 'กำหนดความรู้ที่คงทน/ผลของการจัดการเรียนการสอน', group: '1. แผนการจัดการเรียนรู้' },
-  { id: '1_4', no: '1.4', label: 'การดำเนินกิจกรรมการเรียนการสอนที่สอดคล้องกับหลักสูตรและธรรมชาติของวิชา', group: '1. แผนการจัดการเรียนรู้' },
-  { id: '1_5', no: '1.5', label: 'การกำหนดสื่อประกอบการสอนและแหล่งเรียนรู้', group: '1. แผนการจัดการเรียนรู้' },
-  { id: '1_6', no: '1.6', label: 'การกำหนดวิธีการวัดประเมินผล', group: '1. แผนการจัดการเรียนรู้' },
-  { id: '2', no: '2', label: 'ลำดับขั้นตอนการจัดกิจกรรมการเรียนการสอน (นำเข้าสู่บทเรียน ขั้นสอน ขั้นสรุปผล)' },
-  { id: '3', no: '3', label: 'การจัดการเรียนการสอนที่เน้นผู้เรียนเป็นสำคัญ / นักเรียนมีส่วนร่วมในกิจกรรมการเรียนการสอน' },
-  { id: '4', no: '4', label: 'กิจกรรมพัฒนาคุณภาพผู้เรียนมีการแบ่งกลุ่ม / ส่งเสริมประชาธิปไตย' },
-  { id: '5', no: '5', label: 'ความสามารถในการจัดการชั้นเรียน และแก้ปัญหาในชั้นเรียน' },
-  { id: '6', no: '6', label: 'มีการเสริมแรงตามความเหมาะสม' },
-  { id: '7', no: '7', label: 'ผู้เรียนมีความกระตือรือร้นและสนุกสนานในการเรียน' },
-  { id: '8', no: '8', label: 'การใช้สื่อ ประกอบการเรียนการสอน' },
-  { id: '9', no: '9', label: 'การใช้สื่อ ICT มาถ่ายทอดเนื้อหา สาระ และออกแบบการเรียนรู้' },
-  { id: '10', no: '10', label: 'มีการวัดผลก่อนเรียน และหลังเรียนในแต่ละบทเรียน' },
-  { id: '11', no: '11', label: 'การวัดและประเมินผลด้วยวิธีการที่หลากหลายและสอดคล้องกับหลักสูตร และประเมินความรู้ความสามารถของผู้เรียน' },
-  { id: '12', no: '12', label: 'มีการกำกับติดตาม นักเรียนที่มีปัญหาหรือไม่เข้าใจในบทเรียน ของรายวิชาที่สอน ดำเนินการช่วยเหลือ/แก้ไข' },
-  { id: '13', no: '13', label: 'จัดบรรยากาศการเรียนที่ดึงดูดความสนใจก่อให้เกิดความสุขแก่ผู้เรียน' },
-  { id: '14', no: '14', label: 'การบันทึกหลังสอน และการนำผลการบันทึกหลังสอนมาแก้ไข / พัฒนา' }
-];
-
-const resizeImage = (file) => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = (e) => {
-      const img = new Image();
-      img.src = e.target.result;
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        let width = img.width;
-        let height = img.height;
-        const MAX_WIDTH = 800;
-        const MAX_HEIGHT = 800;
-
-        if (width > height) {
-          if (width > MAX_WIDTH) {
-            height *= MAX_WIDTH / width;
-            width = MAX_WIDTH;
-          }
-        } else {
-          if (height > MAX_HEIGHT) {
-            width *= MAX_HEIGHT / height;
-            height = MAX_HEIGHT;
-          }
-        }
-
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, width, height);
-
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
-        resolve(dataUrl);
-      };
-      img.onerror = (err) => {
-        reject(err);
-      };
-    };
-    reader.onerror = (err) => {
-      reject(err);
-    };
+// Builds the default (all-items "มี"/score 4) ratings map used both as the
+// initial state and as a fallback for any item missing from saved data.
+function buildDefaultRatings() {
+  const defaults = {};
+  OBSERVATION_ITEMS.forEach(item => {
+    defaults[item.id] = { practice: 'มี', score: 4 };
   });
-};
+  return defaults;
+}
+
+// Builds the ratings map for an already-submitted evaluation, falling back
+// to the default for any item that isn't present in the saved data.
+function buildRatingsFromEvaluation(myEval) {
+  const loadedRatings = {};
+  OBSERVATION_ITEMS.forEach(item => {
+    if (myEval.ratings && myEval.ratings[item.id]) {
+      loadedRatings[item.id] = {
+        practice: myEval.ratings[item.id].practice ?? 'มี',
+        score: myEval.ratings[item.id].score ?? 4
+      };
+    } else {
+      // Keep compatibility
+      loadedRatings[item.id] = { practice: 'มี', score: 4 };
+    }
+  });
+  return loadedRatings;
+}
 
 export default function EvaluationModal({ supervision, currentUser, onClose, onSubmit }) {
-  const [ratings, setRatings] = useState(() => {
-    const initial = {};
-    OBSERVATION_ITEMS.forEach(item => {
-      initial[item.id] = { practice: 'มี', score: 4 };
-    });
-    return initial;
-  });
+  // This modal is only ever rendered while its supervision/currentUser are
+  // set (it's conditionally mounted by the parent and closes before a
+  // different supervision can be opened), so the existing evaluation - if
+  // any - can be loaded once via a lazy initializer instead of an effect.
+  const existingEval = supervision && supervision.evaluations && supervision.evaluations[currentUser.id]
+    ? supervision.evaluations[currentUser.id]
+    : null;
 
-  const [teacherBehavior, setTeacherBehavior] = useState('');
-  const [teachingActivity, setTeachingActivity] = useState('');
-  const [studentBehavior, setStudentBehavior] = useState('');
-  const [images, setImages] = useState([]);
+  const [ratings, setRatings] = useState(() => (
+    existingEval && existingEval.ratings ? buildRatingsFromEvaluation(existingEval) : buildDefaultRatings()
+  ));
+
+  const [teacherBehavior, setTeacherBehavior] = useState(() => existingEval?.teacherBehavior ?? '');
+  const [teachingActivity, setTeachingActivity] = useState(() => existingEval?.teachingActivity ?? '');
+  const [studentBehavior, setStudentBehavior] = useState(() => existingEval?.studentBehavior ?? '');
+  const [images, setImages] = useState(() => existingEval?.images ?? []);
   const [isResizing, setIsResizing] = useState(false);
-
-  // Load existing evaluation data if it exists for this supervisor
-  useEffect(() => {
-    if (supervision && supervision.evaluations && supervision.evaluations[currentUser.id]) {
-      const myEval = supervision.evaluations[currentUser.id];
-      if (myEval.ratings) {
-        const loadedRatings = {};
-        OBSERVATION_ITEMS.forEach(item => {
-          if (myEval.ratings[item.id]) {
-            loadedRatings[item.id] = {
-              practice: myEval.ratings[item.id].practice ?? 'มี',
-              score: myEval.ratings[item.id].score ?? 4
-            };
-          } else {
-            // Keep compatibility
-            loadedRatings[item.id] = { practice: 'มี', score: 4 };
-          }
-        });
-        setRatings(loadedRatings);
-      }
-      setTeacherBehavior(myEval.teacherBehavior ?? '');
-      setTeachingActivity(myEval.teachingActivity ?? '');
-      setStudentBehavior(myEval.studentBehavior ?? '');
-      setImages(myEval.images ?? []);
-    }
-  }, [supervision, currentUser]);
 
   const handleImageChange = async (e) => {
     const files = Array.from(e.target.files);
@@ -186,17 +129,6 @@ export default function EvaluationModal({ supervision, currentUser, onClose, onS
     }));
   };
 
-  const formatThaiDate = (dateStr) => {
-    if (!dateStr) return '';
-    const parts = dateStr.split('-');
-    if (parts.length !== 3) return dateStr;
-    const yearTh = parseInt(parts[0]) + 543;
-    const monthIndex = parseInt(parts[1]) - 1;
-    const day = parseInt(parts[2]);
-    const monthsShort = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
-    return `${day} ${monthsShort[monthIndex]} ${yearTh}`;
-  };
-
   return (
     <div className="modal-overlay">
       <div className="modal-content" style={{ maxWidth: '800px', width: '90%' }}>
@@ -207,7 +139,7 @@ export default function EvaluationModal({ supervision, currentUser, onClose, onS
               โรงเรียนโคกสีวิทยาสรรค์ สำนักงานเขตพื้นที่การศึกษามัธยมศึกษาสกลนคร
             </span>
           </h3>
-          <button type="button" className="modal-close-btn" onClick={onClose}>×</button>
+          <button type="button" className="modal-close-btn" aria-label="ปิดหน้าต่าง" onClick={onClose}>×</button>
         </div>
         <form onSubmit={handleFormSubmit}>
           <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', maxHeight: '70vh', overflowY: 'auto' }}>
@@ -230,7 +162,7 @@ export default function EvaluationModal({ supervision, currentUser, onClose, onS
                 </thead>
                 <tbody>
                   {/* Group header if item is 1.1 */}
-                  {OBSERVATION_ITEMS.map((item, idx) => {
+                  {OBSERVATION_ITEMS.map((item) => {
                     const isFirstGroupItem = item.id === '1_1';
                     const showGroupHeader = isFirstGroupItem;
                     

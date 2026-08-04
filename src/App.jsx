@@ -1,26 +1,23 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  LogOut, 
-  CalendarRange, 
-  School, 
-  Users, 
-  ShieldAlert, 
-  CheckCircle2, 
-  ClipboardList, 
-  AlertCircle, 
-  Eye, 
-  BookOpen, 
+import { useState, useEffect, Suspense, lazy } from 'react';
+import {
+  LogOut,
+  CalendarRange,
+  Users,
+  ShieldAlert,
+  CheckCircle2,
+  ClipboardList,
+  AlertCircle,
+  BookOpen,
   Sparkles,
-  Info,
   FileText
 } from 'lucide-react';
 import Calendar from './components/Calendar';
-import TeacherDashboard from './components/TeacherDashboard';
-import AdminDashboard from './components/AdminDashboard';
 import TermPlanArchive from './components/TermPlanArchive';
 import logo from './assets/logo.png';
 import EvaluationModal from './components/EvaluationModal';
 import EvaluationSummaryModal from './components/EvaluationSummaryModal';
+import { formatThaiDateFull } from './utils/thaiDate';
+import { getStatusLabel } from './utils/statusLabels';
 import {
   getUsers,
   addTeacher,
@@ -48,10 +45,27 @@ import {
   updateTeacherPlcGroup,
   updateTeacher
 } from './db';
+import { verifyPassword, isHashed } from './utils/auth';
+
+// TeacherDashboard and AdminDashboard are large (~2300-2500 lines each) and
+// mutually exclusive per user role, so they're code-split into separate
+// chunks and only fetched once a user actually logs in as that role.
+const TeacherDashboard = lazy(() => import('./components/TeacherDashboard'));
+const AdminDashboard = lazy(() => import('./components/AdminDashboard'));
 
 export default function App() {
   // Authentication State
-  const [currentUser, setCurrentUser] = useState(null);
+  const [currentUser, setCurrentUser] = useState(() => {
+    const savedUser = localStorage.getItem('ks_current_user');
+    if (!savedUser) return null;
+    try {
+      return JSON.parse(savedUser);
+    } catch (e) {
+      console.error('Corrupted saved session, clearing it:', e);
+      localStorage.removeItem('ks_current_user');
+      return null;
+    }
+  });
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState('');
@@ -69,13 +83,8 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [activeOnePageLightbox, setActiveOnePageLightbox] = useState(null);
 
-  // Initialize and load session on mount
+  // Load initial data on mount
   useEffect(() => {
-    const savedUser = localStorage.getItem('ks_current_user');
-    if (savedUser) {
-      setCurrentUser(JSON.parse(savedUser));
-    }
-
     const loadData = async () => {
       setIsLoading(true);
       try {
@@ -165,14 +174,21 @@ export default function App() {
     try {
       const latestTeachers = await getUsers();
       setTeachers(latestTeachers);
-      
-      const foundUser = latestTeachers.find(
-        u => u.username === username.toLowerCase().trim() && u.password === password
-      );
+
+      const candidate = latestTeachers.find(u => u.username === username.toLowerCase().trim());
+      const foundUser = candidate && verifyPassword(password, candidate.password) ? candidate : null;
 
       if (foundUser) {
-        setCurrentUser(foundUser);
-        localStorage.setItem('ks_current_user', JSON.stringify(foundUser));
+        // Legacy accounts still store a plaintext password; migrate to a
+        // hash transparently on next successful login instead of requiring
+        // a separate migration step.
+        let userToStore = foundUser;
+        if (!isHashed(foundUser.password)) {
+          await updateTeacher(foundUser.id, { password });
+          userToStore = { ...foundUser, password: '(hashed)' };
+        }
+        setCurrentUser(userToStore);
+        localStorage.setItem('ks_current_user', JSON.stringify(userToStore));
         setLoginError('');
         setUsername('');
         setPassword('');
@@ -389,14 +405,18 @@ export default function App() {
   const handleSubmitPostRecord = async (supervisionId, record) => {
     setIsLoading(true);
     try {
-      await submitPostTeachingRecord(supervisionId, record);
-      const freshData = await refreshSupervisionData();
-      if (selectedEvent && selectedEvent.id === supervisionId && freshData) {
-        const updated = freshData.find(s => s.id === supervisionId);
-        setSelectedEvent(updated);
+      const success = await submitPostTeachingRecord(supervisionId, record);
+      if (success) {
+        const freshData = await refreshSupervisionData();
+        if (selectedEvent && selectedEvent.id === supervisionId && freshData) {
+          const updated = freshData.find(s => s.id === supervisionId);
+          setSelectedEvent(updated);
+        }
       }
+      return success;
     } catch (e) {
       console.error(e);
+      return false;
     } finally {
       setIsLoading(false);
     }
@@ -549,21 +569,6 @@ export default function App() {
     }
   };
 
-  // Format Date to Thai style (e.g. 17 มิถุนายน 2569)
-  const formatThaiDateFull = (dateStr) => {
-    if (!dateStr) return '';
-    const parts = dateStr.split('-');
-    if (parts.length !== 3) return dateStr;
-    const yearTh = parseInt(parts[0]) + 543;
-    const monthIndex = parseInt(parts[1]) - 1;
-    const day = parseInt(parts[2]);
-    const monthsFull = [
-      'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
-      'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'
-    ];
-    return `วันที่ ${day} ${monthsFull[monthIndex]} พ.ศ. ${yearTh}`;
-  };
-
   // Login View
   if (!currentUser) {
     return (
@@ -709,47 +714,49 @@ export default function App() {
         )}
 
         {activeMainTab === 'dashboard' && (
-          currentUser.role === 'admin' ? (
-            <AdminDashboard
-              currentUser={currentUser}
-              supervisions={supervisions}
-              teachers={teachers}
-              onAssignSupervisor={handleAssignSupervisor}
-              onRemoveSupervisor={handleRemoveSupervisor}
-              onApproveVolunteer={handleApproveVolunteer}
-              onRejectVolunteer={handleRejectVolunteer}
-              onAddTeacher={handleAddTeacher}
-              onDeleteTeacher={handleDeleteTeacher}
-              onUpdateSupervision={handleUpdateSupervision}
-              settings={settings}
-              onUpdateSettings={handleUpdateSettings}
-              onUpdateTeacherPlc={handleUpdateTeacherPlc}
-              onUpdateTeacher={handleUpdateTeacher}
-              plcLogs={plcLogs}
-              onDeletePlcLog={handleDeletePlcLog}
-              termPlans={termPlans}
-            />
-          ) : (
-            <TeacherDashboard
-              currentUser={currentUser}
-              supervisions={supervisions}
-              onAddSupervision={handleAddSupervision}
-              onVolunteer={handleVolunteer}
-              onSubmitPostRecord={handleSubmitPostRecord}
-              onDeleteSupervision={handleDeleteSupervision}
-              onUpdateSupervision={handleUpdateSupervision}
-              termPlans={termPlans}
-              onRegisterTermPlan={handleRegisterTermPlan}
-              onUpdateTermPlan={handleUpdateTermPlan}
-              onDeleteTermPlan={handleDeleteTermPlan}
-              teachers={teachers}
-              plcLogs={plcLogs}
-              onAddPlcLog={handleAddPlcLog}
-              onUpdatePlcLog={handleUpdatePlcLog}
-              onDeletePlcLog={handleDeletePlcLog}
-              settings={settings}
-            />
-          )
+          <Suspense fallback={<div className="loading-text" style={{ padding: '2rem', textAlign: 'center' }}>กำลังโหลดหน้าจอ...</div>}>
+            {currentUser.role === 'admin' ? (
+              <AdminDashboard
+                currentUser={currentUser}
+                supervisions={supervisions}
+                teachers={teachers}
+                onAssignSupervisor={handleAssignSupervisor}
+                onRemoveSupervisor={handleRemoveSupervisor}
+                onApproveVolunteer={handleApproveVolunteer}
+                onRejectVolunteer={handleRejectVolunteer}
+                onAddTeacher={handleAddTeacher}
+                onDeleteTeacher={handleDeleteTeacher}
+                onUpdateSupervision={handleUpdateSupervision}
+                settings={settings}
+                onUpdateSettings={handleUpdateSettings}
+                onUpdateTeacherPlc={handleUpdateTeacherPlc}
+                onUpdateTeacher={handleUpdateTeacher}
+                plcLogs={plcLogs}
+                onDeletePlcLog={handleDeletePlcLog}
+                termPlans={termPlans}
+              />
+            ) : (
+              <TeacherDashboard
+                currentUser={currentUser}
+                supervisions={supervisions}
+                onAddSupervision={handleAddSupervision}
+                onVolunteer={handleVolunteer}
+                onSubmitPostRecord={handleSubmitPostRecord}
+                onDeleteSupervision={handleDeleteSupervision}
+                onUpdateSupervision={handleUpdateSupervision}
+                termPlans={termPlans}
+                onRegisterTermPlan={handleRegisterTermPlan}
+                onUpdateTermPlan={handleUpdateTermPlan}
+                onDeleteTermPlan={handleDeleteTermPlan}
+                teachers={teachers}
+                plcLogs={plcLogs}
+                onAddPlcLog={handleAddPlcLog}
+                onUpdatePlcLog={handleUpdatePlcLog}
+                onDeletePlcLog={handleDeletePlcLog}
+                settings={settings}
+              />
+            )}
+          </Suspense>
         )}
       </main>
 
@@ -759,7 +766,7 @@ export default function App() {
           <div className="modal-content" style={{ maxWidth: '550px' }}>
             <div className="modal-header">
               <h3>รายละเอียดการจองเวลาการนิเทศการสอน</h3>
-              <button className="modal-close-btn" onClick={() => setSelectedEvent(null)}>×</button>
+              <button className="modal-close-btn" aria-label="ปิดหน้าต่าง" onClick={() => setSelectedEvent(null)}>×</button>
             </div>
             <div className="modal-body">
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
@@ -803,10 +810,7 @@ export default function App() {
                     <span style={{ fontSize: 'var(--font-xs)', color: 'var(--text-medium)', fontWeight: 600 }}>สถานะการนิเทศ</span>
                     <div>
                       <span className={`badge badge-${selectedEvent.status}`}>
-                        {selectedEvent.status === 'pending' && 'อยู่ระหว่างจัดสรรคณะกรรมการนิเทศ'}
-                        {selectedEvent.status === 'pending_approval' && 'อยู่ระหว่างการพิจารณาอนุมัติคำขอเสนอความจำนง'}
-                        {selectedEvent.status === 'approved' && 'แต่งตั้งคณะกรรมการนิเทศเรียบร้อยแล้ว'}
-                        {selectedEvent.status === 'completed' && 'บันทึกรายงานผลเสร็จสิ้น'}
+                        {getStatusLabel(selectedEvent.status, 'modal')}
                       </span>
                     </div>
                   </div>
@@ -1062,6 +1066,7 @@ export default function App() {
         >
           <button
             onClick={() => setActiveOnePageLightbox(null)}
+            aria-label="ปิดรูปภาพ"
             style={{
               position: 'absolute',
               top: '20px',

@@ -1,8 +1,14 @@
 // Firebase Database Connector (Cloud Firestore)
 // Optimized with single-document collections to minimize read/write count (completely free-tier safe)
 import { initializeApp } from 'firebase/app';
-import { getFirestore, doc, getDoc, setDoc } from 'firebase/firestore';
+import { getFirestore, doc, getDoc, setDoc, runTransaction } from 'firebase/firestore';
+import { hashPassword } from './utils/auth';
 
+// NOTE: this config is not a secret — Firebase's own docs confirm the client
+// config is safe to expose (https://firebase.google.com/docs/projects/api-keys).
+// The actual access boundary must come from Firestore Security Rules, which
+// require access to the Firebase Console to deploy and are NOT yet configured
+// for this project. See README "Security" section for details/next steps.
 const firebaseConfig = {
   apiKey: "AIzaSyCFPxEX5OvBTog0Qy00Y7Vup11p9fmURS8",
   authDomain: "kss-teaching-supervision.firebaseapp.com",
@@ -13,14 +19,18 @@ const firebaseConfig = {
   measurementId: "G-L8MVMQ610L"
 };
 
+// Firestore has a 1 MiB per-document limit; these collections are stored as a
+// single document each, so guard writes instead of failing/losing data silently.
+const MAX_DOC_BYTES = 900 * 1024;
+
 const SEED_USERS = [
-  { id: 'admin', username: 'admin', password: '123', name: 'ผอ.สมเกียรติ ยิ่งใหญ่', role: 'admin', position: 'ผู้อำนวยการโรงเรียน' },
-  { id: 'academic', username: 'academic', password: '123', name: 'ครูวิชาการ (หัวหน้างานวิชาการ)', role: 'admin', position: 'หัวหน้างานวิชาการ' },
-  { id: 'somchai', username: 'somchai', password: '123', name: 'ครูสมชาย ดีงาม', role: 'teacher', position: 'ครูชำนาญการพิเศษ (กลุ่มสาระคณิตศาสตร์)' },
-  { id: 'somsri', username: 'somsri', password: '123', name: 'ครูสมศรี แสนดี', role: 'teacher', position: 'ครู (กลุ่มสาระภาษาไทย)' },
-  { id: 'wilai', username: 'wilai', password: '123', name: 'ครูวิไล รักเรียน', role: 'teacher', position: 'ครูผู้ช่วย (กลุ่มสาระวิทยาศาสตร์)' },
-  { id: 'wittaya', username: 'wittaya', password: '123', name: 'ครูวิทยา เก่งกล้า', role: 'teacher', position: 'ครูชำนาญการ (กลุ่มสาระภาษาต่างประเทศ)' },
-  { id: 'nonglak', username: 'nonglak', password: '123', name: 'ครูนงลักษณ์ ไพเราะ', role: 'teacher', position: 'ครู (กลุ่มสาระศิลปะ)' }
+  { id: 'admin', username: 'admin', password: hashPassword('123'), name: 'ผอ.สมเกียรติ ยิ่งใหญ่', role: 'admin', position: 'ผู้อำนวยการโรงเรียน' },
+  { id: 'academic', username: 'academic', password: hashPassword('123'), name: 'ครูวิชาการ (หัวหน้างานวิชาการ)', role: 'admin', position: 'หัวหน้างานวิชาการ' },
+  { id: 'somchai', username: 'somchai', password: hashPassword('123'), name: 'ครูสมชาย ดีงาม', role: 'teacher', position: 'ครูชำนาญการพิเศษ (กลุ่มสาระคณิตศาสตร์)' },
+  { id: 'somsri', username: 'somsri', password: hashPassword('123'), name: 'ครูสมศรี แสนดี', role: 'teacher', position: 'ครู (กลุ่มสาระภาษาไทย)' },
+  { id: 'wilai', username: 'wilai', password: hashPassword('123'), name: 'ครูวิไล รักเรียน', role: 'teacher', position: 'ครูผู้ช่วย (กลุ่มสาระวิทยาศาสตร์)' },
+  { id: 'wittaya', username: 'wittaya', password: hashPassword('123'), name: 'ครูวิทยา เก่งกล้า', role: 'teacher', position: 'ครูชำนาญการ (กลุ่มสาระภาษาต่างประเทศ)' },
+  { id: 'nonglak', username: 'nonglak', password: hashPassword('123'), name: 'ครูนงลักษณ์ ไพเราะ', role: 'teacher', position: 'ครู (กลุ่มสาระศิลปะ)' }
 ];
 
 // Helper to safely parse JSON strings
@@ -28,7 +38,7 @@ const safeJsonParse = (str, fallback) => {
   if (!str) return fallback;
   try {
     return JSON.parse(str);
-  } catch (e) {
+  } catch {
     return fallback;
   }
 };
@@ -139,19 +149,59 @@ const ensureDBLoaded = async (force = false) => {
   }
 };
 
-const saveCollection = async (datatype, dataArray) => {
-  localStorage.setItem(`ks_${datatype}`, JSON.stringify(dataArray));
-  
+const byteSizeOf = (value) => new TextEncoder().encode(JSON.stringify(value)).length;
+
+// Maps the Firestore document name to the dbCache property it's stored under.
+const CACHE_KEY_BY_DATATYPE = {
+  teachers: 'teachers',
+  supervisions: 'supervisions',
+  term_plans: 'termPlans',
+  plc_logs: 'plcLogs'
+};
+
+// Atomically read-modify-write a collection using a Firestore transaction, so
+// two clients writing around the same time can't silently drop each other's
+// change (the old code read a cached array, mutated it, then blindly
+// overwrote the whole document). `mutateFn` receives the latest array
+// straight from Firestore and must return the new array.
+const mutateCollection = async (datatype, mutateFn) => {
+  const cacheKey = CACHE_KEY_BY_DATATYPE[datatype];
+
   if (!isFirebaseInitialized) {
-    return true;
+    const dbData = await ensureDBLoaded();
+    const nextList = mutateFn(dbData[cacheKey] || []);
+    dbData[cacheKey] = nextList;
+    localStorage.setItem(`ks_${datatype}`, JSON.stringify(nextList));
+    return { success: true, list: nextList };
   }
-  
+
   try {
-    await setDoc(doc(db, "system_db", datatype), { list: dataArray });
-    return true;
+    const ref = doc(db, "system_db", datatype);
+    const nextList = await runTransaction(db, async (transaction) => {
+      const snap = await transaction.get(ref);
+      const currentList = snap.exists() ? (snap.data().list || []) : [];
+      const updatedList = mutateFn(currentList);
+      const payload = { list: updatedList };
+
+      const size = byteSizeOf(payload);
+      if (size > MAX_DOC_BYTES) {
+        throw new Error(
+          `ข้อมูล "${datatype}" มีขนาดใหญ่เกินไป (${(size / 1024).toFixed(0)}KB จากสูงสุด ${(MAX_DOC_BYTES / 1024).toFixed(0)}KB) ` +
+          `ไม่สามารถบันทึกได้ กรุณาลบรูปภาพหรือไฟล์แนบเก่าออกก่อนบันทึกรายการใหม่`
+        );
+      }
+
+      transaction.set(ref, payload);
+      return updatedList;
+    });
+
+    dbCache[cacheKey] = nextList;
+    dbCache.lastLoaded = Date.now();
+    localStorage.setItem(`ks_${datatype}`, JSON.stringify(nextList));
+    return { success: true, list: nextList };
   } catch (e) {
     console.error(`Failed to save ${datatype} to Firestore:`, e);
-    return false;
+    return { success: false, list: null, error: e };
   }
 };
 
@@ -165,32 +215,27 @@ export const getUsers = async () => {
 };
 
 export const addTeacher = async (teacherData) => {
-  const dbData = await ensureDBLoaded();
   const newTeacher = {
-    id: `teacher-${Date.now()}`,
-    ...teacherData
+    id: `teacher-${crypto.randomUUID()}`,
+    ...teacherData,
+    ...(teacherData.password ? { password: hashPassword(teacherData.password) } : {})
   };
-  dbData.teachers.push(newTeacher);
-  const success = await saveCollection('teachers', dbData.teachers);
+  const { success } = await mutateCollection('teachers', (list) => [...list, newTeacher]);
   return success ? newTeacher : null;
 };
 
 export const deleteTeacher = async (teacherId) => {
-  const dbData = await ensureDBLoaded();
-  dbData.teachers = dbData.teachers.filter(t => t.id !== teacherId);
-  const success = await saveCollection('teachers', dbData.teachers);
+  const { success } = await mutateCollection('teachers', (list) => list.filter(t => t.id !== teacherId));
   return success;
 };
 
 export const updateTeacher = async (teacherId, updatedFields) => {
-  const dbData = await ensureDBLoaded();
-  dbData.teachers = dbData.teachers.map(t => {
-    if (t.id === teacherId) {
-      return { ...t, ...updatedFields };
-    }
-    return t;
-  });
-  const success = await saveCollection('teachers', dbData.teachers);
+  const fields = updatedFields.password
+    ? { ...updatedFields, password: hashPassword(updatedFields.password) }
+    : updatedFields;
+  const { success } = await mutateCollection('teachers', (list) =>
+    list.map(t => (t.id === teacherId ? { ...t, ...fields } : t))
+  );
   return success;
 };
 
@@ -205,9 +250,8 @@ export const getSupervisions = async () => {
 };
 
 export const addSupervision = async (supervision) => {
-  const dbData = await ensureDBLoaded();
   const newSupervision = {
-    id: `sup-${Date.now()}`,
+    id: `sup-${crypto.randomUUID()}`,
     status: 'pending',
     supervisors: [],
     volunteerId: '',
@@ -215,179 +259,121 @@ export const addSupervision = async (supervision) => {
     postTeachingRecord: null,
     ...supervision
   };
-  
-  dbData.supervisions.push(newSupervision);
-  const success = await saveCollection('supervisions', dbData.supervisions);
+  const { success } = await mutateCollection('supervisions', (list) => [...list, newSupervision]);
   return success ? newSupervision : null;
 };
 
 export const updateSupervision = async (supervisionId, updatedFields) => {
-  const dbData = await ensureDBLoaded();
-  dbData.supervisions = dbData.supervisions.map(s => {
-    if (s.id === supervisionId) {
-      return { ...s, ...updatedFields };
-    }
-    return s;
-  });
-  const success = await saveCollection('supervisions', dbData.supervisions);
+  const { success } = await mutateCollection('supervisions', (list) =>
+    list.map(s => (s.id === supervisionId ? { ...s, ...updatedFields } : s))
+  );
   return success;
 };
 
 export const deleteSupervision = async (supervisionId) => {
-  const dbData = await ensureDBLoaded();
-  dbData.supervisions = dbData.supervisions.filter(s => s.id !== supervisionId);
-  const success = await saveCollection('supervisions', dbData.supervisions);
+  const { success } = await mutateCollection('supervisions', (list) => list.filter(s => s.id !== supervisionId));
   return success;
 };
 
 export const volunteerToSupervise = async (supervisionId, teacherId, teacherName) => {
-  const dbData = await ensureDBLoaded();
-  dbData.supervisions = dbData.supervisions.map(s => {
-    if (s.id === supervisionId) {
-      return {
-        ...s,
-        status: 'pending_approval',
-        volunteerId: teacherId,
-        volunteerName: teacherName
-      };
-    }
-    return s;
-  });
-  const success = await saveCollection('supervisions', dbData.supervisions);
+  const { success } = await mutateCollection('supervisions', (list) =>
+    list.map(s => (s.id === supervisionId
+      ? { ...s, status: 'pending_approval', volunteerId: teacherId, volunteerName: teacherName }
+      : s))
+  );
   return success;
 };
 
 export const approveVolunteer = async (supervisionId) => {
-  const dbData = await ensureDBLoaded();
-  let success = false;
-  dbData.supervisions = dbData.supervisions.map(s => {
-    if (s.id === supervisionId && s.volunteerId) {
-      const supervisors = [...(s.supervisors || [])];
-      if (!supervisors.some(sup => sup.id === s.volunteerId)) {
-        supervisors.push({ id: s.volunteerId, name: s.volunteerName });
+  let matched = false;
+  const { success } = await mutateCollection('supervisions', (list) =>
+    list.map(s => {
+      if (s.id === supervisionId && s.volunteerId) {
+        matched = true;
+        const supervisors = [...(s.supervisors || [])];
+        if (!supervisors.some(sup => sup.id === s.volunteerId)) {
+          supervisors.push({ id: s.volunteerId, name: s.volunteerName });
+        }
+        const status = supervisors.length >= 2 ? 'approved' : 'pending';
+        return { ...s, status, supervisors, volunteerId: '', volunteerName: '' };
       }
-      const status = supervisors.length >= 2 ? 'approved' : 'pending';
-      success = true;
-      return {
-        ...s,
-        status: status,
-        supervisors: supervisors,
-        volunteerId: '',
-        volunteerName: ''
-      };
-    }
-    return s;
-  });
-  if (success) {
-    await saveCollection('supervisions', dbData.supervisions);
-    return true;
-  }
-  return false;
+      return s;
+    })
+  );
+  return matched && success;
 };
 
 export const rejectVolunteer = async (supervisionId) => {
-  const dbData = await ensureDBLoaded();
-  let success = false;
-  dbData.supervisions = dbData.supervisions.map(s => {
-    if (s.id === supervisionId) {
-      const supervisorsCount = s.supervisors ? s.supervisors.length : 0;
-      const status = supervisorsCount >= 2 ? 'approved' : 'pending';
-      success = true;
-      return {
-        ...s,
-        status: status,
-        volunteerId: '',
-        volunteerName: ''
-      };
-    }
-    return s;
-  });
-  if (success) {
-    await saveCollection('supervisions', dbData.supervisions);
-    return true;
-  }
-  return false;
+  let matched = false;
+  const { success } = await mutateCollection('supervisions', (list) =>
+    list.map(s => {
+      if (s.id === supervisionId) {
+        matched = true;
+        const supervisorsCount = s.supervisors ? s.supervisors.length : 0;
+        const status = supervisorsCount >= 2 ? 'approved' : 'pending';
+        return { ...s, status, volunteerId: '', volunteerName: '' };
+      }
+      return s;
+    })
+  );
+  return matched && success;
 };
 
 export const assignSupervisor = async (supervisionId, supervisorId, supervisorName) => {
-  const dbData = await ensureDBLoaded();
-  let success = false;
-  dbData.supervisions = dbData.supervisions.map(s => {
-    if (s.id === supervisionId) {
-      const supervisors = [...(s.supervisors || [])];
-      if (!supervisors.some(sup => sup.id === supervisorId)) {
-        supervisors.push({ id: supervisorId, name: supervisorName });
+  let matched = false;
+  const { success } = await mutateCollection('supervisions', (list) =>
+    list.map(s => {
+      if (s.id === supervisionId) {
+        matched = true;
+        const supervisors = [...(s.supervisors || [])];
+        if (!supervisors.some(sup => sup.id === supervisorId)) {
+          supervisors.push({ id: supervisorId, name: supervisorName });
+        }
+        const status = supervisors.length >= 2 ? 'approved' : 'pending';
+        const res = { ...s, status, supervisors };
+        if (s.volunteerId === supervisorId) {
+          res.volunteerId = '';
+          res.volunteerName = '';
+        }
+        return res;
       }
-      const status = supervisors.length >= 2 ? 'approved' : 'pending';
-      success = true;
-      
-      const res = {
-        ...s,
-        status: status,
-        supervisors: supervisors
-      };
-      if (s.volunteerId === supervisorId) {
-        res.volunteerId = '';
-        res.volunteerName = '';
-      }
-      return res;
-    }
-    return s;
-  });
-  if (success) {
-    await saveCollection('supervisions', dbData.supervisions);
-    return true;
-  }
-  return false;
+      return s;
+    })
+  );
+  return matched && success;
 };
 
 export const removeSupervisor = async (supervisionId, supervisorId) => {
-  const dbData = await ensureDBLoaded();
-  let success = false;
-  dbData.supervisions = dbData.supervisions.map(s => {
-    if (s.id === supervisionId) {
-      const supervisors = (s.supervisors || []).filter(sup => sup.id !== supervisorId);
-      let status = s.status;
-      if (supervisors.length >= 2) {
-        status = 'approved';
-      } else {
-        if (s.status !== 'completed') {
+  let matched = false;
+  const { success } = await mutateCollection('supervisions', (list) =>
+    list.map(s => {
+      if (s.id === supervisionId) {
+        matched = true;
+        const supervisors = (s.supervisors || []).filter(sup => sup.id !== supervisorId);
+        let status = s.status;
+        if (supervisors.length >= 2) {
+          status = 'approved';
+        } else if (s.status !== 'completed') {
           status = 'pending';
         }
+        return { ...s, status, supervisors };
       }
-      success = true;
-      return {
-        ...s,
-        status: status,
-        supervisors: supervisors
-      };
-    }
-    return s;
-  });
-  if (success) {
-    await saveCollection('supervisions', dbData.supervisions);
-    return true;
-  }
-  return false;
+      return s;
+    })
+  );
+  return matched && success;
 };
 
 export const submitPostTeachingRecord = async (supervisionId, record) => {
-  const dbData = await ensureDBLoaded();
   const fullRecord = {
     ...record,
     submittedAt: new Date().toISOString()
   };
-  dbData.supervisions = dbData.supervisions.map(s => {
-    if (s.id === supervisionId) {
-      return {
-        ...s,
-        status: 'completed',
-        postTeachingRecord: fullRecord
-      };
-    }
-    return s;
-  });
-  const success = await saveCollection('supervisions', dbData.supervisions);
+  const { success } = await mutateCollection('supervisions', (list) =>
+    list.map(s => (s.id === supervisionId
+      ? { ...s, status: 'completed', postTeachingRecord: fullRecord }
+      : s))
+  );
   return success;
 };
 
@@ -401,34 +387,25 @@ export const getTermPlans = async () => {
 };
 
 export const addTermPlan = async (planData) => {
-  const dbData = await ensureDBLoaded();
   const newPlan = {
-    id: `plan-${Date.now()}`,
+    id: `plan-${crypto.randomUUID()}`,
     postLessonRecord: null,
     submittedAt: new Date().toISOString(),
     ...planData
   };
-  dbData.termPlans.push(newPlan);
-  const success = await saveCollection('term_plans', dbData.termPlans);
+  const { success } = await mutateCollection('term_plans', (list) => [...list, newPlan]);
   return success ? newPlan : null;
 };
 
 export const updateTermPlan = async (planId, updatedFields) => {
-  const dbData = await ensureDBLoaded();
-  dbData.termPlans = dbData.termPlans.map(p => {
-    if (p.id === planId) {
-      return { ...p, ...updatedFields };
-    }
-    return p;
-  });
-  const success = await saveCollection('term_plans', dbData.termPlans);
+  const { success } = await mutateCollection('term_plans', (list) =>
+    list.map(p => (p.id === planId ? { ...p, ...updatedFields } : p))
+  );
   return success;
 };
 
 export const deleteTermPlan = async (planId) => {
-  const dbData = await ensureDBLoaded();
-  dbData.termPlans = dbData.termPlans.filter(p => p.id !== planId);
-  const success = await saveCollection('term_plans', dbData.termPlans);
+  const { success } = await mutateCollection('term_plans', (list) => list.filter(p => p.id !== planId));
   return success;
 };
 
@@ -521,44 +498,30 @@ export const getPlcLogs = async () => {
 };
 
 export const addPlcLog = async (logData) => {
-  const dbData = await ensureDBLoaded();
   const newLog = {
-    id: `plc-${Date.now()}`,
+    id: `plc-${crypto.randomUUID()}`,
     submittedAt: new Date().toISOString(),
     ...logData
   };
-  dbData.plcLogs.push(newLog);
-  const success = await saveCollection('plc_logs', dbData.plcLogs);
+  const { success } = await mutateCollection('plc_logs', (list) => [...list, newLog]);
   return success ? newLog : null;
 };
 
 export const updatePlcLog = async (logId, updatedFields) => {
-  const dbData = await ensureDBLoaded();
-  dbData.plcLogs = dbData.plcLogs.map(log => {
-    if (log.id === logId) {
-      return { ...log, ...updatedFields, updatedAt: new Date().toISOString() };
-    }
-    return log;
-  });
-  const success = await saveCollection('plc_logs', dbData.plcLogs);
+  const { success } = await mutateCollection('plc_logs', (list) =>
+    list.map(log => (log.id === logId ? { ...log, ...updatedFields, updatedAt: new Date().toISOString() } : log))
+  );
   return success;
 };
 
 export const deletePlcLog = async (logId) => {
-  const dbData = await ensureDBLoaded();
-  dbData.plcLogs = dbData.plcLogs.filter(log => log.id !== logId);
-  const success = await saveCollection('plc_logs', dbData.plcLogs);
+  const { success } = await mutateCollection('plc_logs', (list) => list.filter(log => log.id !== logId));
   return success;
 };
 
 export const updateTeacherPlcGroup = async (teacherId, plcGroup) => {
-  const dbData = await ensureDBLoaded();
-  dbData.teachers = dbData.teachers.map(t => {
-    if (t.id === teacherId) {
-      return { ...t, plcGroup };
-    }
-    return t;
-  });
-  const success = await saveCollection('teachers', dbData.teachers);
+  const { success } = await mutateCollection('teachers', (list) =>
+    list.map(t => (t.id === teacherId ? { ...t, plcGroup } : t))
+  );
   return success;
 };

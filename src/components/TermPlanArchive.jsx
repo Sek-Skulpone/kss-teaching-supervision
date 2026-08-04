@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Search, FolderOpen, Eye, FileText, ClipboardList } from 'lucide-react';
 
 export default function TermPlanArchive({ termPlans }) {
@@ -127,7 +127,11 @@ export default function TermPlanArchive({ termPlans }) {
                           onClick={() => {
                             if (plan.postLessonRecord.type === 'pdf') {
                               const newWindow = window.open();
-                              newWindow.document.write(`<iframe src="${plan.postLessonRecord.fileData}" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`);
+                              if (newWindow) {
+                                newWindow.document.write(`<iframe src="${plan.postLessonRecord.fileData}" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`);
+                              } else {
+                                alert('เบราว์เซอร์บล็อกป็อปอัป กรุณาอนุญาตป็อปอัปสำหรับเว็บไซต์นี้');
+                              }
                             } else if (plan.postLessonRecord.type === 'link') {
                               window.open(plan.postLessonRecord.fileUrl, '_blank');
                             }
@@ -161,7 +165,7 @@ export default function TermPlanArchive({ termPlans }) {
           <div className="modal-content" style={{ maxWidth: '550px' }}>
             <div className="modal-header">
               <h3>รายงานบันทึกหลังแผนการจัดการเรียนรู้</h3>
-              <button className="modal-close-btn" onClick={() => setSelectedPlan(null)}>×</button>
+              <button className="modal-close-btn" aria-label="ปิดหน้าต่าง" onClick={() => setSelectedPlan(null)}>×</button>
             </div>
             <div className="modal-body">
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', backgroundColor: '#f8f9fa', padding: '0.8rem', borderRadius: 'var(--radius-sm)', marginBottom: '1.25rem', fontSize: '13px', borderLeft: '4px solid var(--primary-color)' }}>

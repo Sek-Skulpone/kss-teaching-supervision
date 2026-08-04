@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
-import { AlertCircle, CheckCircle2, UserCheck, Eye, ClipboardList, Trash2, Calendar as CalendarIcon, Users, UserPlus, Shield, RotateCw, Edit } from 'lucide-react';
+import { useState } from 'react';
+import { AlertCircle, CheckCircle2, UserCheck, Eye, ClipboardList, Trash2, Users, UserPlus, Shield, RotateCw, Edit } from 'lucide-react';
 import EvaluationModal from './EvaluationModal';
 import EvaluationSummaryModal from './EvaluationSummaryModal';
+import { formatThaiDate } from '../utils/thaiDate';
+import { getStatusLabel } from '../utils/statusLabels';
 
 const PERIODS_LIST = [
   'คาบที่ 1 (08.30 - 09.20 น.)',
@@ -62,6 +64,7 @@ export default function AdminDashboard({
   const [selectedDepartment, setSelectedDepartment] = useState('');
   const [newRole, setNewRole] = useState('teacher');
   const [addError, setAddError] = useState('');
+  const [isSubmittingTeacher, setIsSubmittingTeacher] = useState(false);
 
   // Form states for editing teacher
   const [editingTeacher, setEditingTeacher] = useState(null);
@@ -78,22 +81,27 @@ export default function AdminDashboard({
   const [newDepartmentOption, setNewDepartmentOption] = useState('');
   const [newAcademicYearOption, setNewAcademicYearOption] = useState('');
 
-  // Set default dropdown values once settings load
-  React.useEffect(() => {
-    if (settings.positions && settings.positions.length > 0 && !selectedPosition) {
-      setSelectedPosition(settings.positions[0]);
-    }
-    if (settings.departments && settings.departments.length > 0 && !selectedDepartment) {
-      setSelectedDepartment(settings.departments[0]);
-    }
-    if (settings.plcGroups && settings.plcGroups.length > 0 && !selectedPlcGroup) {
-      setSelectedPlcGroup(settings.plcGroups[0]);
-    }
-    if (settings.currentAcademicYear) {
-      setSelectedAdminPlcYear(settings.currentAcademicYear);
-      setSelectedIndividualYear(settings.currentAcademicYear);
-    }
-  }, [settings]);
+  // Default dropdown values, derived from settings once it loads (settings
+  // starts empty and is fetched asynchronously in App.jsx). These are plain
+  // computed values rather than state kept in sync via an effect: as soon
+  // as the user picks something themselves, selectedPosition/etc. becomes
+  // non-empty and takes over from the settings-provided default.
+  const effectivePosition = selectedPosition || (settings.positions && settings.positions[0]) || '';
+  const effectiveDepartment = selectedDepartment || (settings.departments && settings.departments[0]) || '';
+  const effectivePlcGroup = selectedPlcGroup || (settings.plcGroups && settings.plcGroups[0]) || '';
+
+  // The "current academic year" dropdowns intentionally always follow the
+  // system-wide setting whenever it changes (even overriding a prior local
+  // selection) - unlike the defaults above. That's a genuine
+  // prop-change-driven adjustment, so it's handled during render (React's
+  // recommended alternative to an effect for this exact case) rather than
+  // via useEffect.
+  const [syncedAcademicYear, setSyncedAcademicYear] = useState(undefined);
+  if (settings.currentAcademicYear && settings.currentAcademicYear !== syncedAcademicYear) {
+    setSyncedAcademicYear(settings.currentAcademicYear);
+    setSelectedAdminPlcYear(settings.currentAcademicYear);
+    setSelectedIndividualYear(settings.currentAcademicYear);
+  }
 
   // Get current date string in local time (YYYY-MM-DD)
   const getTodayDateString = () => {
@@ -143,7 +151,7 @@ export default function AdminDashboard({
     setAddError('');
 
     const formattedUsername = newUsername.trim().toLowerCase();
-    if (!formattedUsername || !newPassword || !newName || !selectedPosition || !selectedDepartment) {
+    if (!formattedUsername || !newPassword || !newName || !effectivePosition || !effectiveDepartment) {
       setAddError('กรุณากรอกข้อมูลให้ครบทุกช่อง');
       return;
     }
@@ -155,22 +163,27 @@ export default function AdminDashboard({
       return;
     }
 
-    const success = await onAddTeacher({
-      username: newUsername.toLowerCase().trim(),
-      password: newPassword.trim(),
-      name: newName.trim(),
-      role: newRole,
-      position: `${selectedPosition} (${selectedDepartment.replace('กลุ่มสาระการเรียนรู้', '')})`,
-      plcGroup: newRole === 'teacher' ? selectedPlcGroup : ''
-    });
-    if (success) {
-      alert('เพิ่มข้อมูลบุคลากรสำเร็จเรียบร้อยแล้ว');
-      setNewUsername('');
-      setNewPassword('');
-      setNewName('');
-      setNewRole('teacher');
-    } else {
-      setAddError('เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง');
+    setIsSubmittingTeacher(true);
+    try {
+      const success = await onAddTeacher({
+        username: newUsername.toLowerCase().trim(),
+        password: newPassword.trim(),
+        name: newName.trim(),
+        role: newRole,
+        position: `${effectivePosition} (${effectiveDepartment.replace('กลุ่มสาระการเรียนรู้', '')})`,
+        plcGroup: newRole === 'teacher' ? effectivePlcGroup : ''
+      });
+      if (success) {
+        alert('เพิ่มข้อมูลบุคลากรสำเร็จเรียบร้อยแล้ว');
+        setNewUsername('');
+        setNewPassword('');
+        setNewName('');
+        setNewRole('teacher');
+      } else {
+        setAddError('เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง');
+      }
+    } finally {
+      setIsSubmittingTeacher(false);
     }
   };
 
@@ -179,7 +192,10 @@ export default function AdminDashboard({
     setEditName(teacher.name || '');
     setEditPosition(teacher.position || '');
     setEditUsername(teacher.username || '');
-    setEditPassword(teacher.password || '');
+    // Passwords are hashed server-side and never sent back to the client,
+    // so there is nothing meaningful to prefill here. Leave blank; the
+    // submit handler treats a blank password as "keep the current one".
+    setEditPassword('');
     setEditRole(teacher.role || 'teacher');
     setEditPlcGroup(teacher.plcGroup || '');
     setEditError('');
@@ -190,7 +206,7 @@ export default function AdminDashboard({
     setEditError('');
 
     const formattedUsername = editUsername.trim().toLowerCase();
-    if (!formattedUsername || !editPassword || !editName || !editPosition) {
+    if (!formattedUsername || !editName || !editPosition) {
       setEditError('กรุณากรอกข้อมูลให้ครบทุกช่อง');
       return;
     }
@@ -202,14 +218,21 @@ export default function AdminDashboard({
       return;
     }
 
-    const success = await onUpdateTeacher(editingTeacher.id, {
+    const updatedFields = {
       name: editName.trim(),
       position: editPosition.trim(),
       username: formattedUsername,
-      password: editPassword.trim(),
       role: editRole,
       plcGroup: editRole === 'teacher' ? editPlcGroup : ''
-    });
+    };
+    // Blank password field means "keep the current password" - only send
+    // a new (plaintext) password when the admin actually typed one; db.js
+    // hashes it before it's persisted.
+    if (editPassword.trim()) {
+      updatedFields.password = editPassword.trim();
+    }
+
+    const success = await onUpdateTeacher(editingTeacher.id, updatedFields);
 
     if (success) {
       alert('แก้ไขข้อมูลบุคลากรสำเร็จเรียบร้อยแล้ว');
@@ -412,30 +435,30 @@ export default function AdminDashboard({
     }
   };
 
-  const formatThaiDate = (dateStr) => {
-    if (!dateStr) return '';
-    const parts = dateStr.split('-');
-    if (parts.length !== 3) return dateStr;
-    const yearTh = parseInt(parts[0]) + 543;
-    const monthIndex = parseInt(parts[1]) - 1;
-    const day = parseInt(parts[2]);
-    const monthsShort = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
-    return `${day} ${monthsShort[monthIndex]} ${yearTh}`;
+  // Neutralizes CSV formula injection: Excel/Sheets treats a leading
+  // =, +, -, or @ as the start of a formula when the file is opened, which
+  // would let a value entered elsewhere in the app (e.g. a subject name)
+  // execute arbitrary formulas/commands for whoever opens the export.
+  // Prefixing such values with a leading apostrophe forces them to be
+  // treated as plain text instead.
+  const sanitizeCsvCell = (value) => {
+    const str = value === null || value === undefined ? '' : String(value);
+    return /^[=+\-@]/.test(str) ? `'${str}` : str;
   };
 
   const handleExportCSV = () => {
     // Generate CSV contents for all supervisions
     const headers = ['ID', 'ครูผู้รับนิเทศ', 'วิชา', 'ระดับชั้น', 'ห้องเรียน', 'วันที่นิเทศ', 'คาบเวลา', 'สถานะ', 'ผู้นิเทศ'];
     const rows = supervisions.map(s => [
-      s.id,
-      s.teacherName,
-      s.subject,
-      s.grade,
-      s.room,
-      s.date || '',
-      s.time || '',
-      s.status === 'completed' ? 'เสร็จสิ้นแล้ว' : (s.status === 'approved' ? 'แต่งตั้งกรรมการแล้ว' : 'รอดำเนินการ'),
-      s.supervisors ? s.supervisors.map(sup => sup.name).join('; ') : ''
+      sanitizeCsvCell(s.id),
+      sanitizeCsvCell(s.teacherName),
+      sanitizeCsvCell(s.subject),
+      sanitizeCsvCell(s.grade),
+      sanitizeCsvCell(s.room),
+      sanitizeCsvCell(s.date || ''),
+      sanitizeCsvCell(s.time || ''),
+      sanitizeCsvCell(s.status === 'completed' ? 'เสร็จสิ้นแล้ว' : (s.status === 'approved' ? 'แต่งตั้งกรรมการแล้ว' : 'รอดำเนินการ')),
+      sanitizeCsvCell(s.supervisors ? s.supervisors.map(sup => sup.name).join('; ') : '')
     ]);
     
     const csvContent = "\uFEFF" + [headers.join(','), ...rows.map(e => e.map(val => `"${val.replace(/"/g, '""')}"`).join(','))].join('\n');
@@ -1140,7 +1163,7 @@ export default function AdminDashboard({
                     <div className="form-group" style={{ marginBottom: 0 }}>
                       <label>ตำแหน่ง</label>
                       <select
-                        value={selectedPosition}
+                        value={effectivePosition}
                         onChange={(e) => setSelectedPosition(e.target.value)}
                         style={{ padding: '0.5rem' }}
                         required
@@ -1154,7 +1177,7 @@ export default function AdminDashboard({
                     <div className="form-group" style={{ marginBottom: 0 }}>
                       <label>กลุ่มสาระการเรียนรู้</label>
                       <select
-                        value={selectedDepartment}
+                        value={effectiveDepartment}
                         onChange={(e) => setSelectedDepartment(e.target.value)}
                         style={{ padding: '0.5rem' }}
                         required
@@ -1194,7 +1217,7 @@ export default function AdminDashboard({
                     <div className="form-group">
                       <label>กลุ่ม PLC</label>
                       <select
-                        value={selectedPlcGroup}
+                        value={effectivePlcGroup}
                         onChange={(e) => setSelectedPlcGroup(e.target.value)}
                         style={{ padding: '0.5rem' }}
                       >
@@ -1218,8 +1241,8 @@ export default function AdminDashboard({
                     </select>
                   </div>
 
-                  <button type="submit" className="btn btn-primary" style={{ width: '100%', padding: '0.75rem', marginTop: '0.5rem' }}>
-                    บันทึกข้อมูลบุคลากร
+                  <button type="submit" className="btn btn-primary" style={{ width: '100%', padding: '0.75rem', marginTop: '0.5rem' }} disabled={isSubmittingTeacher}>
+                    {isSubmittingTeacher ? 'กำลังบันทึก...' : 'บันทึกข้อมูลบุคลากร'}
                   </button>
                 </form>
               </div>
@@ -1398,7 +1421,6 @@ export default function AdminDashboard({
                       <th>ตำแหน่ง / สังกัดกลุ่มสาระ</th>
                       <th>กลุ่ม PLC</th>
                       <th>ชื่อผู้ใช้งาน</th>
-                      <th>รหัสผ่าน</th>
                       <th style={{ textAlign: 'center' }}>การจัดการ</th>
                     </tr>
                   </thead>
@@ -1430,7 +1452,6 @@ export default function AdminDashboard({
                           )}
                         </td>
                         <td style={{ fontFamily: 'monospace', fontSize: '13px' }}>{t.username}</td>
-                        <td style={{ fontFamily: 'monospace', fontSize: '13px' }}>{t.password}</td>
                         <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
                           <button
                             className="btn btn-outline"
@@ -1464,7 +1485,7 @@ export default function AdminDashboard({
           <div className="modal-content" style={{ maxWidth: '500px' }}>
             <div className="modal-header">
               <h3>⚙️ แก้ไขข้อมูลบุคลากร</h3>
-              <button className="modal-close-btn" onClick={() => setEditingTeacher(null)}>×</button>
+              <button className="modal-close-btn" aria-label="ปิดหน้าต่าง" onClick={() => setEditingTeacher(null)}>×</button>
             </div>
             <form onSubmit={handleEditTeacherSubmit}>
               <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -1529,13 +1550,14 @@ export default function AdminDashboard({
                     />
                   </div>
                   <div className="form-group">
-                    <label style={{ fontWeight: 600, display: 'block', marginBottom: '0.25rem' }}>รหัสผ่าน (Password)</label>
+                    <label style={{ fontWeight: 600, display: 'block', marginBottom: '0.25rem' }}>รหัสผ่านใหม่ (เว้นว่างหากไม่ต้องการเปลี่ยน)</label>
                     <input
-                      type="text"
+                      type="password"
                       value={editPassword}
                       onChange={(e) => setEditPassword(e.target.value)}
+                      placeholder="เว้นว่างเพื่อคงรหัสผ่านเดิม"
                       style={{ width: '100%', padding: '0.5rem' }}
-                      required
+                      autoComplete="new-password"
                     />
                   </div>
                 </div>
@@ -1584,7 +1606,7 @@ export default function AdminDashboard({
           <div className="modal-content">
             <div className="modal-header">
               <h3>รายงานบันทึกหลังการจัดการเรียนรู้</h3>
-              <button className="modal-close-btn" onClick={() => setSelectedReport(null)}>×</button>
+              <button className="modal-close-btn" aria-label="ปิดหน้าต่าง" onClick={() => setSelectedReport(null)}>×</button>
             </div>
             <div className="modal-body">
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', backgroundColor: '#f8f9fa', padding: '0.8rem', borderRadius: 'var(--radius-sm)', marginBottom: '1.25rem', fontSize: '13px', borderLeft: '4px solid var(--primary-color)' }}>
@@ -1730,10 +1752,7 @@ export default function AdminDashboard({
                               <td>{s.supervisors && s.supervisors.length > 0 ? s.supervisors.map(sup => sup.name).join(', ') : '-'}</td>
                               <td style={{ textAlign: 'center' }}>
                                 <span className={`badge badge-${s.status}`}>
-                                  {s.status === 'pending' && 'อยู่ระหว่างจัดสรร'}
-                                  {s.status === 'pending_approval' && 'รอกรรมการอาสา'}
-                                  {s.status === 'approved' && 'แต่งตั้งเสร็จสิ้น'}
-                                  {s.status === 'completed' && 'บันทึกหลังสอนแล้ว'}
+                                  {getStatusLabel(s.status, 'compact')}
                                 </span>
                               </td>
                               <td style={{ textAlign: 'center', fontWeight: 700, color: avgData ? 'var(--primary-color)' : 'var(--text-light)' }}>
@@ -2196,7 +2215,7 @@ export default function AdminDashboard({
           <div className="modal-content" style={{ maxWidth: '750px', width: '90%' }}>
             <div className="modal-header">
               <h3>รายงานกิจกรรม PLC เชิงลึก</h3>
-              <button className="modal-close-btn" onClick={() => setSelectedPlcTeacher(null)}>×</button>
+              <button className="modal-close-btn" aria-label="ปิดหน้าต่าง" onClick={() => setSelectedPlcTeacher(null)}>×</button>
             </div>
             <div className="modal-body" style={{ maxHeight: '70vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
               <div style={{ backgroundColor: '#f8f9fa', padding: '0.8rem', borderRadius: 'var(--radius-sm)', fontSize: '13px', borderLeft: '4px solid var(--primary-color)' }}>
@@ -2334,7 +2353,7 @@ export default function AdminDashboard({
           <div className="modal-content" style={{ maxWidth: '550px', width: '90%' }}>
             <div className="modal-header">
               <h3>รายละเอียดบันทึกกิจกรรม PLC</h3>
-              <button className="modal-close-btn" onClick={() => setSelectedPlcLogDetail(null)}>×</button>
+              <button className="modal-close-btn" aria-label="ปิดหน้าต่าง" onClick={() => setSelectedPlcLogDetail(null)}>×</button>
             </div>
             <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem', fontSize: '13.5px' }}>
               <div style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>
@@ -2496,6 +2515,7 @@ export default function AdminDashboard({
         >
           <button
             onClick={() => setActivePlcLightboxImage(null)}
+            aria-label="ปิดรูปภาพ"
             style={{
               position: 'absolute',
               top: '20px',

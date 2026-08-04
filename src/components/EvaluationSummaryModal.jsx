@@ -1,40 +1,9 @@
 import React, { useState } from 'react';
-
-const OBSERVATION_ITEMS = [
-  { id: '1_1', no: '1.1', label: 'มีแผนการจัดการเรียนรู้ที่ใช้ประกอบการเรียนการสอน', group: '1. แผนการจัดการเรียนรู้' },
-  { id: '1_2', no: '1.2', label: 'การกำหนดจุดประสงค์การเรียนรู้ตามตัวชี้วัดตามหลักสูตร / ผลการเรียนรู้', group: '1. แผนการจัดการเรียนรู้' },
-  { id: '1_3', no: '1.3', label: 'กำหนดความรู้ที่คงทน/ผลของการจัดการเรียนการสอน', group: '1. แผนการจัดการเรียนรู้' },
-  { id: '1_4', no: '1.4', label: 'การดำเนินกิจกรรมการเรียนการสอนที่สอดคล้องกับหลักสูตรและธรรมชาติของวิชา', group: '1. แผนการจัดการเรียนรู้' },
-  { id: '1_5', no: '1.5', label: 'การกำหนดสื่อประกอบการสอนและแหล่งเรียนรู้', group: '1. แผนการจัดการเรียนรู้' },
-  { id: '1_6', no: '1.6', label: 'การกำหนดวิธีการวัดประเมินผล', group: '1. แผนการจัดการเรียนรู้' },
-  { id: '2', no: '2', label: 'ลำดับขั้นตอนการจัดกิจกรรมการเรียนการสอน (นำเข้าสู่บทเรียน ขั้นสอน ขั้นสรุปผล)' },
-  { id: '3', no: '3', label: 'การจัดการเรียนการสอนที่เน้นผู้เรียนเป็นสำคัญ / นักเรียนมีส่วนร่วมในกิจกรรมการเรียนการสอน' },
-  { id: '4', no: '4', label: 'กิจกรรมพัฒนาคุณภาพผู้เรียนมีการแบ่งกลุ่ม / ส่งเสริมประชาธิปไตย' },
-  { id: '5', no: '5', label: 'ความสามารถในการจัดการชั้นเรียน และแก้ปัญหาในชั้นเรียน' },
-  { id: '6', no: '6', label: 'มีการเสริมแรงตามความเหมาะสม' },
-  { id: '7', no: '7', label: 'ผู้เรียนมีความกระตือรือร้นและสนุกสนานในการเรียน' },
-  { id: '8', no: '8', label: 'การใช้สื่อ ประกอบการเรียนการสอน' },
-  { id: '9', no: '9', label: 'การใช้สื่อ ICT มาถ่ายทอดเนื้อหา สาระ และออกแบบการเรียนรู้' },
-  { id: '10', no: '10', label: 'มีการวัดผลก่อนเรียน และหลังเรียนในแต่ละบทเรียน' },
-  { id: '11', no: '11', label: 'การวัดและประเมินผลด้วยวิธีการที่หลากหลายและสอดคล้องกับหลักสูตร และประเมินความรู้ความสามารถของผู้เรียน' },
-  { id: '12', no: '12', label: 'มีการกำกับติดตาม นักเรียนที่มีปัญหาหรือไม่เข้าใจในบทเรียน ของรายวิชาที่สอน ดำเนินการช่วยเหลือ/แก้ไข' },
-  { id: '13', no: '13', label: 'จัดบรรยากาศการเรียนที่ดึงดูดความสนใจก่อให้เกิดความสุขแก่ผู้เรียน' },
-  { id: '14', no: '14', label: 'การบันทึกหลังสอน และการนำผลการบันทึกหลังสอนมาแก้ไข / พัฒนา' }
-];
+import { OBSERVATION_ITEMS } from '../utils/observationItems';
+import { formatThaiDate } from '../utils/thaiDate';
 
 export default function EvaluationSummaryModal({ supervision, onClose }) {
   const [activeLightboxImage, setActiveLightboxImage] = useState(null);
-
-  const formatThaiDate = (dateStr) => {
-    if (!dateStr) return '';
-    const parts = dateStr.split('-');
-    if (parts.length !== 3) return dateStr;
-    const yearTh = parseInt(parts[0]) + 543;
-    const monthIndex = parseInt(parts[1]) - 1;
-    const day = parseInt(parts[2]);
-    const monthsShort = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
-    return `${day} ${monthsShort[monthIndex]} ${yearTh}`;
-  };
 
   const getAverageEvalData = (sup) => {
     if (!sup || !sup.evaluations || Object.keys(sup.evaluations).length === 0) {
@@ -93,7 +62,7 @@ export default function EvaluationSummaryModal({ supervision, onClose }) {
               ดึงข้อมูลรายงานวิเคราะห์และคิดคะแนนเฉลี่ยรวมระบบออนไลน์
             </span>
           </h3>
-          <button type="button" className="modal-close-btn" onClick={onClose}>×</button>
+          <button type="button" className="modal-close-btn" aria-label="ปิดหน้าต่าง" onClick={onClose}>×</button>
         </div>
         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', maxHeight: '70vh', overflowY: 'auto' }}>
           
@@ -214,15 +183,24 @@ export default function EvaluationSummaryModal({ supervision, onClose }) {
                           <strong style={{ display: 'block', marginBottom: '0.4rem' }}>📷 ภาพประกอบการนิเทศ:</strong>
                           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', gap: '8px' }}>
                             {ev.images.map((imgUrl, imgIdx) => (
-                              <div 
-                                key={imgIdx} 
+                              <div
+                                key={imgIdx}
+                                role="button"
+                                tabIndex={0}
+                                aria-label={`ดูรูปภาพประกอบการนิเทศ ${imgIdx + 1}`}
                                 onClick={() => setActiveLightboxImage(imgUrl)}
-                                style={{ 
-                                  position: 'relative', 
-                                  width: '100%', 
-                                  aspectRatio: '4/3', 
-                                  borderRadius: '4px', 
-                                  overflow: 'hidden', 
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' || e.key === ' ') {
+                                    e.preventDefault();
+                                    setActiveLightboxImage(imgUrl);
+                                  }
+                                }}
+                                style={{
+                                  position: 'relative',
+                                  width: '100%',
+                                  aspectRatio: '4/3',
+                                  borderRadius: '4px',
+                                  overflow: 'hidden',
                                   border: '1px solid #cbd5e1',
                                   cursor: 'pointer',
                                   transition: 'transform 0.2s, box-shadow 0.2s',
@@ -292,6 +270,7 @@ export default function EvaluationSummaryModal({ supervision, onClose }) {
         >
           <button
             onClick={() => setActiveLightboxImage(null)}
+            aria-label="ปิดรูปภาพ"
             style={{
               position: 'absolute',
               top: '20px',
