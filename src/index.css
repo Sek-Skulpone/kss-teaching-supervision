@@ -462,6 +462,7 @@ textarea:focus {
 .calendar-day-cell {
   background-color: white;
   min-height: 120px;
+  min-width: 0;
   padding: 0.5rem;
   border: 1px solid var(--border-color);
   display: flex;
@@ -673,10 +674,38 @@ textarea:focus {
   color: var(--text-light);
   cursor: pointer;
   transition: var(--transition);
+  min-width: 40px;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
 }
 
 .modal-close-btn:hover {
   color: var(--text-dark);
+}
+
+/* Small inline "remove/delete" icon buttons (supervisor chips, option lists) */
+.icon-remove-btn {
+  min-width: 28px;
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: none;
+  color: #e74c3c;
+  cursor: pointer;
+  font-weight: bold;
+  font-size: 13px;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+  transition: var(--transition);
+}
+
+.icon-remove-btn:hover {
+  background-color: rgba(231, 76, 60, 0.1);
 }
 
 .modal-body {
@@ -842,6 +871,27 @@ tr:hover td {
   .tab-btn {
     padding: 0.5rem 0.75rem;
     font-size: var(--font-sm);
+  }
+
+  .modal-content {
+    padding: 1.25rem;
+    max-height: 95vh;
+  }
+
+  .modal-overlay {
+    padding: 0.5rem;
+  }
+
+  .modal-header h3 {
+    font-size: var(--font-base);
+  }
+
+  .modal-footer {
+    flex-direction: column-reverse;
+  }
+
+  .modal-footer button {
+    width: 100%;
   }
 }
 

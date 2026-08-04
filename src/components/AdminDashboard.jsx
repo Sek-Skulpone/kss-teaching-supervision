@@ -821,9 +821,9 @@ export default function AdminDashboard({
                                 {req.supervisors.map(s => (
                                   <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#f1f1f1', padding: '2px 8px', borderRadius: '4px', fontSize: '12px' }}>
                                     <span>{s.name}</span>
-                                    <button 
+                                    <button
                                       onClick={() => onRemoveSupervisor(req.id, s.id)}
-                                      style={{ border: 'none', background: 'none', color: '#e74c3c', cursor: 'pointer', padding: '0 4px', fontSize: '11px', fontWeight: 'bold' }}
+                                      className="icon-remove-btn"
                                       title="ถอนการแต่งตั้ง"
                                     >
                                       ✖
@@ -832,7 +832,7 @@ export default function AdminDashboard({
                                 ))}
                               </div>
                             )}
-                            
+
                             {/* Requirement Warning */}
                             {(!req.supervisors || req.supervisors.length < 2) && (
                               <span style={{ color: '#e67e22', fontSize: '11px', fontWeight: 600 }}>
@@ -1014,9 +1014,9 @@ export default function AdminDashboard({
                                 {req.supervisors.map(s => (
                                   <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#f1f1f1', padding: '2px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 500 }}>
                                     <span>{s.name}</span>
-                                    <button 
+                                    <button
                                       onClick={() => onRemoveSupervisor(req.id, s.id)}
-                                      style={{ border: 'none', background: 'none', color: '#e74c3c', cursor: 'pointer', padding: '0 4px', fontSize: '11px', fontWeight: 'bold' }}
+                                      className="icon-remove-btn"
                                       title="ถอนการแต่งตั้ง"
                                     >
                                       ✖
@@ -1265,7 +1265,7 @@ export default function AdminDashboard({
                           <button
                             type="button"
                             onClick={() => handleDeletePositionOption(pos)}
-                            style={{ border: 'none', background: 'none', color: '#e74c3c', cursor: 'pointer', fontWeight: 'bold', fontSize: '11px', padding: '0 4px' }}
+                            className="icon-remove-btn"
                             title="ลบตัวเลือกนี้"
                           >
                             ✖
@@ -1298,7 +1298,7 @@ export default function AdminDashboard({
                           <button
                             type="button"
                             onClick={() => handleDeleteDepartmentOption(dept)}
-                            style={{ border: 'none', background: 'none', color: '#e74c3c', cursor: 'pointer', fontWeight: 'bold', fontSize: '11px', padding: '0 4px' }}
+                            className="icon-remove-btn"
                             title="ลบตัวเลือกนี้"
                           >
                             ✖
@@ -1331,7 +1331,7 @@ export default function AdminDashboard({
                           <button
                             type="button"
                             onClick={() => handleDeletePlcGroupOption(group)}
-                            style={{ border: 'none', background: 'none', color: '#e74c3c', cursor: 'pointer', fontWeight: 'bold', fontSize: '11px', padding: '0 4px' }}
+                            className="icon-remove-btn"
                             title="ลบตัวเลือกนี้"
                           >
                             ✖
@@ -1379,7 +1379,7 @@ export default function AdminDashboard({
                           <button
                             type="button"
                             onClick={() => handleDeleteAcademicYearOption(y)}
-                            style={{ border: 'none', background: 'none', color: '#e74c3c', cursor: 'pointer', fontWeight: 'bold', fontSize: '11px', padding: '0 4px' }}
+                            className="icon-remove-btn"
                             title="ลบตัวเลือกนี้"
                           >
                             ✖
