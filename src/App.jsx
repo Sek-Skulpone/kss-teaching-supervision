@@ -12,6 +12,7 @@ import {
   FileText
 } from 'lucide-react';
 import Calendar from './components/Calendar';
+import InstallAppButton from './components/InstallAppButton';
 import TermPlanArchive from './components/TermPlanArchive';
 import logo from './assets/logo.png';
 import EvaluationModal from './components/EvaluationModal';
@@ -615,17 +616,7 @@ export default function App() {
             </button>
           </form>
 
-          <div className="demo-account-info">
-            <strong>💡 บัญชีทดลองสำหรับเข้าใช้งานระบบ:</strong>
-            <ul style={{ marginTop: '0.25rem' }}>
-              <li><strong>ฝ่ายวิชาการ (แอดมิน):</strong> ใช้ <code>academic</code> (รหัสผ่าน <code>123</code>)</li>
-              <li><strong>ผู้อำนวยการโรงเรียน:</strong> ใช้ <code>admin</code> (รหัสผ่าน <code>123</code>)</li>
-              <li><strong>คุณครูสมชาย:</strong> ใช้ <code>somchai</code> (รหัสผ่าน <code>123</code>)</li>
-              <li><strong>คุณครูสมศรี:</strong> ใช้ <code>somsri</code> (รหัสผ่าน <code>123</code>)</li>
-              <li><strong>คุณครูวิไล:</strong> ใช้ <code>wilai</code> (รหัสผ่าน <code>123</code>)</li>
-              <li><strong>คุณครูวิทยา:</strong> ใช้ <code>wittaya</code> (รหัสผ่าน <code>123</code>)</li>
-            </ul>
-          </div>
+          <InstallAppButton />
         </div>
         {isLoading && (
           <div className="loading-overlay">

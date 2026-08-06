@@ -403,19 +403,20 @@ textarea:focus {
   font-size: var(--font-sm);
 }
 
-.demo-account-info {
-  background-color: var(--secondary-light);
-  border: 1px dashed var(--secondary-color);
-  padding: 0.75rem;
-  border-radius: var(--radius-sm);
-  margin-top: 1.5rem;
-  font-size: var(--font-xs);
-  color: #7d6608;
+/* Install-to-home-screen button: mobile/tablet only, hidden on desktop */
+.install-app-wrapper {
+  display: none;
 }
 
-.demo-account-info ul {
-  padding-left: 1rem;
-  margin-top: 0.25rem;
+@media (max-width: 1024px) {
+  .install-app-wrapper {
+    display: block;
+    margin-top: 1.25rem;
+  }
+
+  .install-app-btn {
+    width: 100%;
+  }
 }
 
 /* --- Calendar Components --- */
