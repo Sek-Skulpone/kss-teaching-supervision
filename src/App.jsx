@@ -54,16 +54,25 @@ import { verifyPassword, isHashed } from './utils/auth';
 const TeacherDashboard = lazy(() => import('./components/TeacherDashboard'));
 const AdminDashboard = lazy(() => import('./components/AdminDashboard'));
 
+// Sessions expire 1 hour after login, regardless of activity.
+const SESSION_DURATION_MS = 60 * 60 * 1000;
+
 export default function App() {
   // Authentication State
   const [currentUser, setCurrentUser] = useState(() => {
     const savedUser = localStorage.getItem('ks_current_user');
-    if (!savedUser) return null;
+    const expiry = Number(localStorage.getItem('ks_session_expiry'));
+    if (!savedUser || !expiry || Date.now() >= expiry) {
+      localStorage.removeItem('ks_current_user');
+      localStorage.removeItem('ks_session_expiry');
+      return null;
+    }
     try {
       return JSON.parse(savedUser);
     } catch (e) {
       console.error('Corrupted saved session, clearing it:', e);
       localStorage.removeItem('ks_current_user');
+      localStorage.removeItem('ks_session_expiry');
       return null;
     }
   });
@@ -190,6 +199,7 @@ export default function App() {
         }
         setCurrentUser(userToStore);
         localStorage.setItem('ks_current_user', JSON.stringify(userToStore));
+        localStorage.setItem('ks_session_expiry', String(Date.now() + SESSION_DURATION_MS));
         setLoginError('');
         setUsername('');
         setPassword('');
@@ -209,8 +219,20 @@ export default function App() {
   const handleLogout = () => {
     setCurrentUser(null);
     localStorage.removeItem('ks_current_user');
+    localStorage.removeItem('ks_session_expiry');
     setSelectedEvent(null);
   };
+
+  // Auto-logout once the session expires, even if the tab is left open
+  // (the lazy useState initializer only catches expiry on reload/mount).
+  useEffect(() => {
+    if (!currentUser) return;
+    const expiry = Number(localStorage.getItem('ks_session_expiry'));
+    if (!expiry) return;
+    const msRemaining = Math.max(0, expiry - Date.now());
+    const timer = setTimeout(handleLogout, msRemaining);
+    return () => clearTimeout(timer);
+  }, [currentUser]);
 
   // Teacher/Personnel Management Handlers
   const handleAddTeacher = async (teacherData) => {
