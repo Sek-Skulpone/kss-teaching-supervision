@@ -615,15 +615,20 @@ export default function TeacherDashboard({
     }
   };
 
+  // Legacy records created before the academicYear field existed have no
+  // value at all -- treat those as belonging to the current academic year
+  // instead of silently hiding them from every year filter forever.
+  const matchesSelectedYear = (record) => (record.academicYear || settings.currentAcademicYear) === selectedPlcYear;
+
   // Filtering data subsets
-  const myRequests = supervisions.filter(s => s.teacherId === currentUser.id && s.academicYear === selectedPlcYear);
+  const myRequests = supervisions.filter(s => s.teacherId === currentUser.id && matchesSelectedYear(s));
   const myTermPlans = termPlans.filter(tp => tp.teacherId === currentUser.id);
-  const myPlcLogs = plcLogs.filter(log => log.teacherId === currentUser.id && log.academicYear === selectedPlcYear);
-  
+  const myPlcLogs = plcLogs.filter(log => log.teacherId === currentUser.id && matchesSelectedYear(log));
+
   // Supervisions of other teachers open for volunteering
   const openForVolunteering = supervisions.filter(
-    s => s.teacherId !== currentUser.id && 
-         s.academicYear === selectedPlcYear &&
+    s => s.teacherId !== currentUser.id &&
+         matchesSelectedYear(s) &&
          (s.status === 'pending' || (s.supervisors && s.supervisors.length < 2)) &&
          (!s.supervisors || !s.supervisors.some(sup => sup.id === currentUser.id)) &&
          s.status !== 'completed' &&
@@ -632,7 +637,7 @@ export default function TeacherDashboard({
 
   // My volunteered items waiting or approved
   const myVolunteeredSupervisions = supervisions.filter(
-    s => s.academicYear === selectedPlcYear &&
+    s => matchesSelectedYear(s) &&
          ((s.supervisors && s.supervisors.some(sup => sup.id === currentUser.id)) || s.volunteerId === currentUser.id)
   );
 
@@ -642,7 +647,7 @@ export default function TeacherDashboard({
     if (myPlcLogs.some(l => Number(l.cycle) === 2)) count++;
     if (myPlcLogs.some(l => Number(l.cycle) === 4)) count++;
     const hasCycle3Booking = supervisions.some(
-      s => s.teacherId === currentUser.id && s.academicYear === selectedPlcYear
+      s => s.teacherId === currentUser.id && matchesSelectedYear(s)
     );
     if (hasCycle3Booking) count++;
     return count;
@@ -1270,7 +1275,7 @@ export default function TeacherDashboard({
             ].map(cycle => {
               let log = myPlcLogs.find(l => Number(l.cycle) === cycle.cycleNum);
               const cycle3Supervision = supervisions.find(
-                s => s.teacherId === currentUser.id && s.academicYear === selectedPlcYear
+                s => s.teacherId === currentUser.id && matchesSelectedYear(s)
               );
 
               // Virtualize Cycle 3 log if a supervision has been booked
@@ -1597,7 +1602,7 @@ export default function TeacherDashboard({
                             
                             if (Number(cycle.cycleNum) === 4) {
                               const c3Sup = supervisions.find(
-                                s => s.teacherId === currentUser.id && s.academicYear === selectedPlcYear
+                                s => s.teacherId === currentUser.id && matchesSelectedYear(s)
                               );
                               const c3DateStr = c3Sup?.date ? `${formatThaiDate(c3Sup.date)} (${c3Sup.time})` : log.date;
                               setPlcDate(c3DateStr);
@@ -1645,7 +1650,7 @@ export default function TeacherDashboard({
                         onClick={() => {
                           if (Number(cycle.cycleNum) === 4) {
                             const c3Sup = supervisions.find(
-                              s => s.teacherId === currentUser.id && s.academicYear === selectedPlcYear
+                              s => s.teacherId === currentUser.id && matchesSelectedYear(s)
                             );
                             if (!c3Sup) {
                               alert('กรุณาดำเนินการขอรับการนิเทศในวงรอบที่ 3 ก่อน เพื่อใช้ข้อมูลในวงรอบที่ 4');
@@ -1737,7 +1742,7 @@ export default function TeacherDashboard({
                 {Number(plcModalCycle) === 4 ? (
                   (() => {
                     const c3Sup = supervisions.find(
-                      s => s.teacherId === currentUser.id && s.academicYear === selectedPlcYear
+                      s => s.teacherId === currentUser.id && matchesSelectedYear(s)
                     );
                     const supervisorNames = c3Sup?.supervisors ? c3Sup.supervisors.map(s => s.name) : [];
                     const finalMembers = [currentUser.name, ...supervisorNames].join(', ');

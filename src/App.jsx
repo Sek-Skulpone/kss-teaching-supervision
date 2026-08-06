@@ -863,8 +863,9 @@ export default function App() {
         )}
 
         {activeMainTab === 'archive' && (
-          <TermPlanArchive 
-            termPlans={termPlans} 
+          <TermPlanArchive
+            termPlans={termPlans}
+            settings={settings}
           />
         )}
 

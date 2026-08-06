@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { Search, FolderOpen, Eye, FileText, ClipboardList } from 'lucide-react';
 
-export default function TermPlanArchive({ termPlans }) {
-  const [selectedYear, setSelectedYear] = useState('2569');
+export default function TermPlanArchive({ termPlans, settings = {} }) {
+  const [selectedYear, setSelectedYear] = useState(settings.currentAcademicYear || '2569');
   const [selectedTerm, setSelectedTerm] = useState('1');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedPlan, setSelectedPlan] = useState(null);
@@ -13,7 +13,10 @@ export default function TermPlanArchive({ termPlans }) {
 
   // Filtered term plans
   const filteredPlans = termPlans.filter(plan => {
-    const matchesYear = plan.academicYear === selectedYear;
+    // Legacy plans created before the academicYear field existed have no
+    // value at all -- treat those as belonging to the current academic year
+    // instead of silently hiding them from every year filter forever.
+    const matchesYear = (plan.academicYear || settings.currentAcademicYear) === selectedYear;
     const matchesTerm = plan.term === selectedTerm;
     
     const query = searchQuery.toLowerCase().trim();

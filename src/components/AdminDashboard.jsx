@@ -116,8 +116,13 @@ export default function AdminDashboard({
 
   const todayStr = getTodayDateString();
 
+  // Legacy records created before the academicYear field existed have no
+  // value at all -- treat those as belonging to the current academic year
+  // instead of silently hiding them from every year filter forever.
+  const matchesYear = (record, selectedYear) => (record.academicYear || settings.currentAcademicYear) === selectedYear;
+
   // Supervisions for the currently selected academic year only
-  const yearSupervisions = supervisions.filter(s => s.academicYear === selectedSupervisionYear);
+  const yearSupervisions = supervisions.filter(s => matchesYear(s, selectedSupervisionYear));
 
   // Filter today's supervisions
   const todaySupervisions = yearSupervisions.filter(s => s.date === todayStr);
@@ -1947,7 +1952,7 @@ export default function AdminDashboard({
                   .filter(t => !plcFilterGroup || t.plcGroup === plcFilterGroup)
                   .filter(t => !plcFilterSearch || t.name.toLowerCase().includes(plcFilterSearch.toLowerCase()))
                   .map(teacher => {
-                    const teacherLogs = plcLogs.filter(log => log.teacherId === teacher.id && log.academicYear === selectedAdminPlcYear);
+                    const teacherLogs = plcLogs.filter(log => log.teacherId === teacher.id && matchesYear(log, selectedAdminPlcYear));
                     const cycle1 = teacherLogs.find(log => Number(log.cycle) === 1);
                     const cycle2 = teacherLogs.find(log => Number(log.cycle) === 2);
                     const cycle3 = teacherLogs.find(log => Number(log.cycle) === 3);
@@ -2091,17 +2096,17 @@ export default function AdminDashboard({
 
             // 1. Annual Teaching Plans (termPlans)
             const plans = termPlans.filter(
-              tp => tp.teacherId === selectedIndividualTeacherId && tp.academicYear === selectedIndividualYear
+              tp => tp.teacherId === selectedIndividualTeacherId && matchesYear(tp, selectedIndividualYear)
             );
 
             // 2. Cycle 3 Supervision request
             const sup = supervisions.find(
-              s => s.teacherId === selectedIndividualTeacherId && s.academicYear === selectedIndividualYear
+              s => s.teacherId === selectedIndividualTeacherId && matchesYear(s, selectedIndividualYear)
             );
 
             // 3. Cycle 4 PLC log
             const cycle4Log = plcLogs.find(
-              log => log.teacherId === selectedIndividualTeacherId && Number(log.cycle) === 4 && log.academicYear === selectedIndividualYear
+              log => log.teacherId === selectedIndividualTeacherId && Number(log.cycle) === 4 && matchesYear(log, selectedIndividualYear)
             );
 
             return (
@@ -2282,7 +2287,7 @@ export default function AdminDashboard({
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                 {(() => {
-                  const sup = supervisions.find(s => s.teacherId === selectedPlcTeacher.id && s.academicYear === selectedAdminPlcYear);
+                  const sup = supervisions.find(s => s.teacherId === selectedPlcTeacher.id && matchesYear(s, selectedAdminPlcYear));
                   const cycle3Images = [];
                   if (sup && sup.evaluations) {
                     Object.values(sup.evaluations).forEach(ev => {
@@ -2298,7 +2303,7 @@ export default function AdminDashboard({
                     { cycleNum: 3, name: 'วงรอบที่ 3: ปฏิบัติการสอนและนิเทศแบบชี้แนะ (Implementation & Coaching)' },
                     { cycleNum: 4, name: 'วงรอบที่ 4: สะท้อนผล ขยายผล และยกระดับคุณภาพ (Reflection & Scaling Up)' }
                   ].map(cycle => {
-                    const log = plcLogs.find(l => l.teacherId === selectedPlcTeacher.id && Number(l.cycle) === cycle.cycleNum && l.academicYear === selectedAdminPlcYear);
+                    const log = plcLogs.find(l => l.teacherId === selectedPlcTeacher.id && Number(l.cycle) === cycle.cycleNum && matchesYear(l, selectedAdminPlcYear));
                     const imagesToShow = cycle.cycleNum === 3 ? cycle3Images : (log ? log.images : []);
                     
                     return (
