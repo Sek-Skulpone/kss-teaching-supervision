@@ -9,7 +9,8 @@ import {
   AlertCircle,
   BookOpen,
   Sparkles,
-  FileText
+  FileText,
+  KeyRound
 } from 'lucide-react';
 import Calendar from './components/Calendar';
 import InstallAppButton from './components/InstallAppButton';
@@ -92,6 +93,14 @@ export default function App() {
   const [plcLogs, setPlcLogs] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [activeOnePageLightbox, setActiveOnePageLightbox] = useState(null);
+
+  // Change Password Modal State
+  const [showChangePassword, setShowChangePassword] = useState(false);
+  const [currentPasswordInput, setCurrentPasswordInput] = useState('');
+  const [newPasswordInput, setNewPasswordInput] = useState('');
+  const [confirmPasswordInput, setConfirmPasswordInput] = useState('');
+  const [changePasswordError, setChangePasswordError] = useState('');
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
 
   // Load initial data on mount
   useEffect(() => {
@@ -233,6 +242,54 @@ export default function App() {
     const timer = setTimeout(handleLogout, msRemaining);
     return () => clearTimeout(timer);
   }, [currentUser]);
+
+  // Change Password Handler (self-service, any logged-in role)
+  const handleChangePasswordSubmit = async (e) => {
+    e.preventDefault();
+    setChangePasswordError('');
+
+    if (!currentPasswordInput || !newPasswordInput || !confirmPasswordInput) {
+      setChangePasswordError('กรุณากรอกข้อมูลให้ครบทุกช่อง');
+      return;
+    }
+    if (newPasswordInput !== confirmPasswordInput) {
+      setChangePasswordError('รหัสผ่านใหม่และการยืนยันรหัสผ่านไม่ตรงกัน');
+      return;
+    }
+
+    setIsChangingPassword(true);
+    try {
+      // Re-fetch the latest record rather than trusting currentUser.password,
+      // which may hold a '(hashed)' placeholder set after a legacy-password
+      // login migration instead of the real hash (see handleLogin).
+      const latestTeachers = await getUsers();
+      const latestSelf = latestTeachers.find(t => t.id === currentUser.id);
+      if (!latestSelf || !verifyPassword(currentPasswordInput, latestSelf.password)) {
+        setChangePasswordError('รหัสผ่านปัจจุบันไม่ถูกต้อง');
+        return;
+      }
+
+      const success = await updateTeacher(currentUser.id, { password: newPasswordInput });
+      if (success) {
+        const updatedUser = { ...currentUser, password: '(hashed)' };
+        setCurrentUser(updatedUser);
+        localStorage.setItem('ks_current_user', JSON.stringify(updatedUser));
+        await refreshTeachersData();
+        alert('เปลี่ยนรหัสผ่านเรียบร้อยแล้ว');
+        setShowChangePassword(false);
+        setCurrentPasswordInput('');
+        setNewPasswordInput('');
+        setConfirmPasswordInput('');
+      } else {
+        setChangePasswordError('เกิดข้อผิดพลาดในการบันทึกรหัสผ่านใหม่ กรุณาลองใหม่อีกครั้ง');
+      }
+    } catch (err) {
+      console.error('Error changing password:', err);
+      setChangePasswordError('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์ กรุณาลองใหม่อีกครั้ง');
+    } finally {
+      setIsChangingPassword(false);
+    }
+  };
 
   // Teacher/Personnel Management Handlers
   const handleAddTeacher = async (teacherData) => {
@@ -668,12 +725,97 @@ export default function App() {
             {currentUser.role === 'admin' ? <ShieldAlert size={14} /> : <Users size={14} />}
             <span>{currentUser.name} ({currentUser.position})</span>
           </div>
-          <button className="btn-logout" onClick={handleLogout}>
+          <button className="btn-nav-action" onClick={() => setShowChangePassword(true)}>
+            <KeyRound size={14} />
+            เปลี่ยนรหัสผ่าน
+          </button>
+          <button className="btn-nav-action" onClick={handleLogout}>
             <LogOut size={14} />
             ออกจากระบบ
           </button>
         </div>
       </header>
+
+      {showChangePassword && (
+        <div className="modal-overlay" onClick={() => setShowChangePassword(false)}>
+          <div className="modal-content" style={{ maxWidth: '400px' }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>เปลี่ยนรหัสผ่าน</h3>
+              <button
+                className="modal-close-btn"
+                aria-label="ปิดหน้าต่าง"
+                onClick={() => {
+                  setShowChangePassword(false);
+                  setChangePasswordError('');
+                  setCurrentPasswordInput('');
+                  setNewPasswordInput('');
+                  setConfirmPasswordInput('');
+                }}
+              >
+                ×
+              </button>
+            </div>
+            <form onSubmit={handleChangePasswordSubmit}>
+              <div className="modal-body">
+                {changePasswordError && (
+                  <div style={{ backgroundColor: '#fde8e8', color: '#e74c3c', padding: '0.75rem', borderRadius: 'var(--radius-sm)', marginBottom: '1rem', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <AlertCircle size={14} />
+                    {changePasswordError}
+                  </div>
+                )}
+                <div className="form-group">
+                  <label>รหัสผ่านปัจจุบัน</label>
+                  <input
+                    type="password"
+                    value={currentPasswordInput}
+                    onChange={(e) => setCurrentPasswordInput(e.target.value)}
+                    placeholder="กรอกรหัสผ่านปัจจุบัน"
+                    required
+                  />
+                </div>
+                <div className="form-group">
+                  <label>รหัสผ่านใหม่</label>
+                  <input
+                    type="password"
+                    value={newPasswordInput}
+                    onChange={(e) => setNewPasswordInput(e.target.value)}
+                    placeholder="กรอกรหัสผ่านใหม่"
+                    required
+                  />
+                </div>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label>ยืนยันรหัสผ่านใหม่</label>
+                  <input
+                    type="password"
+                    value={confirmPasswordInput}
+                    onChange={(e) => setConfirmPasswordInput(e.target.value)}
+                    placeholder="กรอกรหัสผ่านใหม่อีกครั้ง"
+                    required
+                  />
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  onClick={() => {
+                    setShowChangePassword(false);
+                    setChangePasswordError('');
+                    setCurrentPasswordInput('');
+                    setNewPasswordInput('');
+                    setConfirmPasswordInput('');
+                  }}
+                >
+                  ยกเลิก
+                </button>
+                <button type="submit" className="btn btn-primary" disabled={isChangingPassword}>
+                  {isChangingPassword ? 'กำลังบันทึก...' : 'บันทึกรหัสผ่านใหม่'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Main Content Area */}
       <main className="dashboard-main">
