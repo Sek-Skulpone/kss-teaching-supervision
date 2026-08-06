@@ -109,7 +109,7 @@ export default function App() {
     loadData();
   }, []);
 
-  // Sync state changes back to Google Sheets
+  // Refresh supervision data from the database
   const refreshSupervisionData = async () => {
     setIsLoading(true);
     try {
@@ -1107,7 +1107,7 @@ export default function App() {
       {isLoading && (
         <div className="loading-overlay">
           <div className="spinner"></div>
-          <div className="loading-text">กำลังเชื่อมต่อและดึงข้อมูลจาก Google Sheets...</div>
+          <div className="loading-text">กำลังดำเนินการ กรุณารอสักครู่...</div>
         </div>
       )}
     </div>
