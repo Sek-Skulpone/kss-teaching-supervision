@@ -36,6 +36,7 @@ export default function AdminDashboard({
   onDeletePlcLog
 }) {
   const [activeSubTab, setActiveSubTab] = useState('supervisions');
+  const [selectedSupervisionYear, setSelectedSupervisionYear] = useState(settings.currentAcademicYear || '2569');
   const [selectedTeacherId, setSelectedTeacherId] = useState({});
   const [selectedIndividualTeacherId, setSelectedIndividualTeacherId] = useState('');
   const [selectedIndividualYear, setSelectedIndividualYear] = useState('2569');
@@ -102,6 +103,7 @@ export default function AdminDashboard({
     setSyncedAcademicYear(settings.currentAcademicYear);
     setSelectedAdminPlcYear(settings.currentAcademicYear);
     setSelectedIndividualYear(settings.currentAcademicYear);
+    setSelectedSupervisionYear(settings.currentAcademicYear);
   }
 
   // Get current date string in local time (YYYY-MM-DD)
@@ -114,17 +116,20 @@ export default function AdminDashboard({
 
   const todayStr = getTodayDateString();
 
+  // Supervisions for the currently selected academic year only
+  const yearSupervisions = supervisions.filter(s => s.academicYear === selectedSupervisionYear);
+
   // Filter today's supervisions
-  const todaySupervisions = supervisions.filter(s => s.date === todayStr);
+  const todaySupervisions = yearSupervisions.filter(s => s.date === todayStr);
 
   // Filter pending assignments (both purely pending, pending volunteer approval, or supervisors count under 2)
-  const pendingAssignments = supervisions.filter(
-    s => s.status !== 'completed' && 
+  const pendingAssignments = yearSupervisions.filter(
+    s => s.status !== 'completed' &&
          (s.status === 'pending' || s.status === 'pending_approval' || (s.supervisors && s.supervisors.length < 2))
   );
 
   // Filter approved/completed supervisions
-  const activeAndCompleted = supervisions.filter(s => s.status === 'approved' || s.status === 'completed');
+  const activeAndCompleted = yearSupervisions.filter(s => s.status === 'approved' || s.status === 'completed');
 
   // Handle direct supervisor assignment
   const handleAssignClick = (supervisionId) => {
@@ -631,6 +636,20 @@ export default function AdminDashboard({
 
       {activeSubTab === 'supervisions' && (
         <div>
+          {/* Academic Year Filter */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
+            <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-medium)' }}>ปีการศึกษา:</span>
+            <select
+              value={selectedSupervisionYear}
+              onChange={(e) => setSelectedSupervisionYear(e.target.value)}
+              style={{ padding: '0.3rem 0.6rem', fontSize: '13px', borderRadius: '4px', border: '1px solid var(--border-color)', backgroundColor: 'white' }}
+            >
+              {(settings.academicYears || ['2567', '2568', '2569']).map(y => (
+                <option key={y} value={y}>{y}</option>
+              ))}
+            </select>
+          </div>
+
           {/* 1. Daily Notification / Reminder */}
           <div className="notification-banner">
             <div className="notification-banner-icon">
@@ -671,7 +690,7 @@ export default function AdminDashboard({
               </div>
               <div className="stat-details">
                 <h5>จำนวนการจองการนิเทศทั้งหมด</h5>
-                <p>{supervisions.length} รายวิชา</p>
+                <p>{yearSupervisions.length} รายวิชา</p>
               </div>
             </div>
             <div className="stat-card">
@@ -689,7 +708,7 @@ export default function AdminDashboard({
               </div>
               <div className="stat-details">
                 <h5>แต่งตั้งคณะกรรมการเสร็จสิ้น</h5>
-                <p>{supervisions.filter(s => s.status === 'approved').length} รายการ</p>
+                <p>{yearSupervisions.filter(s => s.status === 'approved').length} รายการ</p>
               </div>
             </div>
             <div className="stat-card">
@@ -698,7 +717,7 @@ export default function AdminDashboard({
               </div>
               <div className="stat-details">
                 <h5>การนิเทศเสร็จสมบูรณ์</h5>
-                <p>{supervisions.filter(s => s.status === 'completed').length} รายการ</p>
+                <p>{yearSupervisions.filter(s => s.status === 'completed').length} รายการ</p>
               </div>
             </div>
           </div>
