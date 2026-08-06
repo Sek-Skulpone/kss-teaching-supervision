@@ -727,6 +727,7 @@ export default function App() {
                 onAddTeacher={handleAddTeacher}
                 onDeleteTeacher={handleDeleteTeacher}
                 onUpdateSupervision={handleUpdateSupervision}
+                onDeleteSupervision={handleDeleteSupervision}
                 settings={settings}
                 onUpdateSettings={handleUpdateSettings}
                 onUpdateTeacherPlc={handleUpdateTeacherPlc}

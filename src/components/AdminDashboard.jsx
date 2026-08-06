@@ -27,6 +27,7 @@ export default function AdminDashboard({
   onDeleteTeacher,
   onUpdateTeacher,
   onUpdateSupervision,
+  onDeleteSupervision,
   settings = { positions: [], departments: [] },
   termPlans = [],
   onUpdateSettings,
@@ -142,6 +143,18 @@ export default function AdminDashboard({
         return next;
       });
       alert('แต่งตั้งผู้นิเทศสำเร็จ!');
+    }
+  };
+
+  // Handle Delete Supervision (admin only)
+  const handleDeleteSupervisionClick = async (supervisionId) => {
+    if (window.confirm('คุณแน่ใจหรือไม่ที่จะลบรายการนิเทศนี้? ข้อมูลทั้งหมด รวมถึงผลการประเมินและรายงานที่เกี่ยวข้องจะถูกลบออกจากระบบอย่างถาวร')) {
+      const success = await onDeleteSupervision(supervisionId);
+      if (success) {
+        alert('ลบรายการเรียบร้อยแล้ว');
+      } else {
+        alert('เกิดข้อผิดพลาดในการลบข้อมูล กรุณาลองใหม่อีกครั้ง');
+      }
     }
   };
 
@@ -710,6 +723,7 @@ export default function AdminDashboard({
                       <th>วัน-เวลานิเทศ</th>
                       <th>แผนการสอน</th>
                       <th>การจัดการรายนามคณะกรรมการนิเทศ</th>
+                      <th style={{ textAlign: 'center' }}>ลบรายการ</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -900,6 +914,17 @@ export default function AdminDashboard({
                             )}
                           </div>
                         </td>
+                        <td style={{ textAlign: 'center' }}>
+                          <button
+                            type="button"
+                            className="icon-remove-btn"
+                            title="ลบรายการนิเทศนี้"
+                            aria-label="ลบรายการนิเทศนี้"
+                            onClick={() => handleDeleteSupervisionClick(req.id)}
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -930,6 +955,7 @@ export default function AdminDashboard({
                       <th>สถานะการนิเทศ</th>
                       <th>นิเทศหน้าเดียว</th>
                       <th>รายงานบันทึกหลังสอน</th>
+                      <th style={{ textAlign: 'center' }}>ลบรายการ</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1118,6 +1144,17 @@ export default function AdminDashboard({
                               📊 ดูผลประเมิน ({Object.keys(req.evaluations).length} ท่าน)
                             </button>
                           )}
+                        </td>
+                        <td style={{ textAlign: 'center' }}>
+                          <button
+                            type="button"
+                            className="icon-remove-btn"
+                            title="ลบรายการนิเทศนี้"
+                            aria-label="ลบรายการนิเทศนี้"
+                            onClick={() => handleDeleteSupervisionClick(req.id)}
+                          >
+                            <Trash2 size={16} />
+                          </button>
                         </td>
                       </tr>
                     ))}
