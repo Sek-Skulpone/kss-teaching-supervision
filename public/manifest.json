@@ -1,0 +1,26 @@
+{
+  "name": "ระบบนิเทศการสอน โรงเรียนโคกสีวิทยาสรรค์",
+  "short_name": "นิเทศการสอน",
+  "description": "ระบบนิเทศการสอนออนไลน์ โรงเรียนโคกสีวิทยาสรรค์",
+  "start_url": "/kss-teaching-supervision/",
+  "scope": "/kss-teaching-supervision/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#fcfaf6",
+  "theme_color": "#2F4F4F",
+  "lang": "th",
+  "icons": [
+    {
+      "src": "/kss-teaching-supervision/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/kss-teaching-supervision/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
