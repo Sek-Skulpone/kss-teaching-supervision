@@ -1477,6 +1477,7 @@ export default function AdminDashboard({
                 <table>
                   <thead>
                     <tr>
+                      <th style={{ width: '1%' }}></th>
                       <th>ชื่อ-นามสกุล</th>
                       <th>บทบาท</th>
                       <th>ตำแหน่ง / สังกัดกลุ่มสาระ</th>
@@ -1488,6 +1489,15 @@ export default function AdminDashboard({
                   <tbody>
                     {teachers.map((t) => (
                       <tr key={t.id}>
+                        <td>
+                          {t.profilePicture ? (
+                            <img src={t.profilePicture} alt={t.name} className="teacher-avatar-img" />
+                          ) : (
+                            <div className="teacher-avatar-placeholder">
+                              <Users size={14} />
+                            </div>
+                          )}
+                        </td>
                         <td style={{ fontWeight: 600 }}>{t.name}</td>
                         <td>
                           <span style={{ fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '0.25rem', padding: '0.2rem 0.5rem', borderRadius: '30px', backgroundColor: t.role === 'admin' ? '#fef3c7' : '#e0f2fe', color: t.role === 'admin' ? '#b45309' : '#0369a1', fontWeight: 600 }}>

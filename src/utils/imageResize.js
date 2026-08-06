@@ -1,8 +1,9 @@
 // Client-side image compressor used before storing photos as base64 data
 // URLs (Firestore documents have a size limit, so uploads are downscaled
-// and re-encoded as JPEG first). Resizes to fit within 800x800 while
-// preserving aspect ratio.
-export const resizeImage = (file) => {
+// and re-encoded as JPEG first). Resizes to fit within maxWidth x maxHeight
+// while preserving aspect ratio. Defaults match the original 800x800 preset
+// used for PLC/evaluation photos; pass smaller values for e.g. avatars.
+export const resizeImage = (file, { maxWidth = 800, maxHeight = 800, quality = 0.7 } = {}) => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);
@@ -13,18 +14,16 @@ export const resizeImage = (file) => {
         const canvas = document.createElement('canvas');
         let width = img.width;
         let height = img.height;
-        const MAX_WIDTH = 800;
-        const MAX_HEIGHT = 800;
 
         if (width > height) {
-          if (width > MAX_WIDTH) {
-            height *= MAX_WIDTH / width;
-            width = MAX_WIDTH;
+          if (width > maxWidth) {
+            height *= maxWidth / width;
+            width = maxWidth;
           }
         } else {
-          if (height > MAX_HEIGHT) {
-            width *= MAX_HEIGHT / height;
-            height = MAX_HEIGHT;
+          if (height > maxHeight) {
+            width *= maxHeight / height;
+            height = maxHeight;
           }
         }
 
@@ -33,7 +32,7 @@ export const resizeImage = (file) => {
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0, width, height);
 
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+        const dataUrl = canvas.toDataURL('image/jpeg', quality);
         resolve(dataUrl);
       };
       img.onerror = (err) => {

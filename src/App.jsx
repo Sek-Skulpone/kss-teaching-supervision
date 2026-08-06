@@ -10,7 +10,8 @@ import {
   BookOpen,
   Sparkles,
   FileText,
-  KeyRound
+  KeyRound,
+  Camera
 } from 'lucide-react';
 import Calendar from './components/Calendar';
 import InstallAppButton from './components/InstallAppButton';
@@ -20,6 +21,7 @@ import EvaluationModal from './components/EvaluationModal';
 import EvaluationSummaryModal from './components/EvaluationSummaryModal';
 import { formatThaiDateFull } from './utils/thaiDate';
 import { getStatusLabel } from './utils/statusLabels';
+import { resizeImage } from './utils/imageResize';
 import {
   getUsers,
   addTeacher,
@@ -101,6 +103,9 @@ export default function App() {
   const [confirmPasswordInput, setConfirmPasswordInput] = useState('');
   const [changePasswordError, setChangePasswordError] = useState('');
   const [isChangingPassword, setIsChangingPassword] = useState(false);
+
+  // Profile Picture Upload State
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
 
   // Load initial data on mount
   useEffect(() => {
@@ -288,6 +293,37 @@ export default function App() {
       setChangePasswordError('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์ กรุณาลองใหม่อีกครั้ง');
     } finally {
       setIsChangingPassword(false);
+    }
+  };
+
+  // Profile Picture Upload Handler (self-service, any logged-in role)
+  const handleAvatarUpload = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = ''; // allow re-selecting the same file later
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      alert('กรุณาเลือกไฟล์รูปภาพเท่านั้น');
+      return;
+    }
+
+    setIsUploadingAvatar(true);
+    try {
+      const dataUrl = await resizeImage(file, { maxWidth: 240, maxHeight: 240, quality: 0.8 });
+      const success = await updateTeacher(currentUser.id, { profilePicture: dataUrl });
+      if (success) {
+        const updatedUser = { ...currentUser, profilePicture: dataUrl };
+        setCurrentUser(updatedUser);
+        localStorage.setItem('ks_current_user', JSON.stringify(updatedUser));
+        await refreshTeachersData();
+      } else {
+        alert('เกิดข้อผิดพลาดในการบันทึกรูปภาพ กรุณาลองใหม่อีกครั้ง');
+      }
+    } catch (err) {
+      console.error('Error uploading avatar:', err);
+      alert('ไม่สามารถอ่านไฟล์รูปภาพได้ กรุณาลองใหม่อีกครั้ง');
+    } finally {
+      setIsUploadingAvatar(false);
     }
   };
 
@@ -721,6 +757,22 @@ export default function App() {
         </div>
         
         <div className="nav-user">
+          <label className="user-avatar-upload" title="อัปโหลดรูปประจำตัว">
+            {currentUser.profilePicture ? (
+              <img src={currentUser.profilePicture} alt="รูปประจำตัว" className="user-avatar-img" />
+            ) : (
+              <div className="user-avatar-placeholder">
+                <Camera size={14} />
+              </div>
+            )}
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handleAvatarUpload}
+              disabled={isUploadingAvatar}
+              style={{ display: 'none' }}
+            />
+          </label>
           <div className={`user-badge ${currentUser.role === 'admin' ? 'role-admin' : ''}`}>
             {currentUser.role === 'admin' ? <ShieldAlert size={14} /> : <Users size={14} />}
             <span>{currentUser.name} ({currentUser.position})</span>
