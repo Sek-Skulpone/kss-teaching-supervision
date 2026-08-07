@@ -72,6 +72,7 @@ export default function AdminDashboard({
   const [editingTeacher, setEditingTeacher] = useState(null);
   const [editName, setEditName] = useState('');
   const [editPosition, setEditPosition] = useState('');
+  const [editDepartment, setEditDepartment] = useState('');
   const [editUsername, setEditUsername] = useState('');
   const [editPassword, setEditPassword] = useState('');
   const [editRole, setEditRole] = useState('teacher');
@@ -210,10 +211,31 @@ export default function AdminDashboard({
     }
   };
 
+  // Department isn't stored as its own field -- like the add-teacher form,
+  // it's embedded in position as "{position} ({department, prefix stripped})".
+  // Try to split an existing position string back into the two parts so the
+  // edit form can pre-select a matching department; falls back to leaving
+  // position untouched (department unselected) when it doesn't cleanly match
+  // one of the current department options.
+  const splitPositionAndDepartment = (positionStr) => {
+    const match = (positionStr || '').match(/^(.*)\((.+)\)\s*$/);
+    if (!match) return { position: positionStr || '', department: '' };
+    const [, base, paren] = match;
+    const parenNormalized = paren.replace('กลุ่มสาระการเรียนรู้', '').trim();
+    const matchedDept = (settings.departments || []).find(
+      d => d.replace('กลุ่มสาระการเรียนรู้', '').trim() === parenNormalized
+    );
+    return matchedDept
+      ? { position: base.trim(), department: matchedDept }
+      : { position: positionStr || '', department: '' };
+  };
+
   const handleEditTeacherClick = (teacher) => {
     setEditingTeacher(teacher);
     setEditName(teacher.name || '');
-    setEditPosition(teacher.position || '');
+    const { position, department } = splitPositionAndDepartment(teacher.position);
+    setEditPosition(position);
+    setEditDepartment(department);
     setEditUsername(teacher.username || '');
     // Passwords are hashed server-side and never sent back to the client,
     // so there is nothing meaningful to prefill here. Leave blank; the
@@ -241,9 +263,13 @@ export default function AdminDashboard({
       return;
     }
 
+    const finalPosition = (editRole === 'teacher' && editDepartment)
+      ? `${editPosition.trim()} (${editDepartment.replace('กลุ่มสาระการเรียนรู้', '')})`
+      : editPosition.trim();
+
     const updatedFields = {
       name: editName.trim(),
-      position: editPosition.trim(),
+      position: finalPosition,
       username: formattedUsername,
       role: editRole,
       plcGroup: editRole === 'teacher' ? editPlcGroup : ''
@@ -1607,6 +1633,22 @@ export default function AdminDashboard({
                     </div>
                   </div>
                 </div>
+
+                {editRole === 'teacher' && (
+                  <div className="form-group">
+                    <label style={{ fontWeight: 600, display: 'block', marginBottom: '0.25rem' }}>กลุ่มสาระการเรียนรู้</label>
+                    <select
+                      value={editDepartment}
+                      onChange={(e) => setEditDepartment(e.target.value)}
+                      style={{ width: '100%', padding: '0.5rem' }}
+                    >
+                      <option value="">-- ไม่ระบุกลุ่มสาระ --</option>
+                      {settings.departments && settings.departments.map(dept => (
+                        <option key={dept} value={dept}>{dept}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
                   <div className="form-group">
