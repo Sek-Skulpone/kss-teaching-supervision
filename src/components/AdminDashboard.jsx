@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { AlertCircle, CheckCircle2, UserCheck, Eye, ClipboardList, Trash2, Users, UserPlus, Shield, RotateCw, Edit } from 'lucide-react';
 import EvaluationModal from './EvaluationModal';
 import EvaluationSummaryModal from './EvaluationSummaryModal';
+import AvatarEditorModal from './AvatarEditorModal';
 import { formatThaiDate } from '../utils/thaiDate';
 import { getStatusLabel } from '../utils/statusLabels';
 
@@ -70,6 +71,7 @@ export default function AdminDashboard({
 
   // Form states for editing teacher
   const [editingTeacher, setEditingTeacher] = useState(null);
+  const [showTeacherAvatarEditor, setShowTeacherAvatarEditor] = useState(false);
   const [editName, setEditName] = useState('');
   const [editPosition, setEditPosition] = useState('');
   const [editDepartment, setEditDepartment] = useState('');
@@ -244,6 +246,7 @@ export default function AdminDashboard({
     setEditRole(teacher.role || 'teacher');
     setEditPlcGroup(teacher.plcGroup || '');
     setEditError('');
+    setShowTeacherAvatarEditor(false);
   };
 
   const handleEditTeacherSubmit = async (e) => {
@@ -291,6 +294,25 @@ export default function AdminDashboard({
     }
   };
 
+  // Admin editing another teacher's profile picture (separate from the
+  // teacher's own self-service editor in App.jsx, same underlying modal).
+  // Keeps the local editingTeacher snapshot in sync so the thumbnail in the
+  // edit form updates immediately without closing/reopening the modal.
+  const handleTeacherAvatarSave = async (dataUrl, position) => {
+    const success = await onUpdateTeacher(editingTeacher.id, { profilePicture: dataUrl, profilePicturePosition: position });
+    if (success) {
+      setEditingTeacher(prev => ({ ...prev, profilePicture: dataUrl, profilePicturePosition: position }));
+    }
+    return success;
+  };
+
+  const handleTeacherAvatarDelete = async () => {
+    const success = await onUpdateTeacher(editingTeacher.id, { profilePicture: null, profilePicturePosition: null });
+    if (success) {
+      setEditingTeacher(prev => ({ ...prev, profilePicture: null, profilePicturePosition: null }));
+    }
+    return success;
+  };
 
   const handleAddPositionOption = async (e) => {
     e.preventDefault();
@@ -1517,7 +1539,12 @@ export default function AdminDashboard({
                       <tr key={t.id}>
                         <td>
                           {t.profilePicture ? (
-                            <img src={t.profilePicture} alt={t.name} className="teacher-avatar-img" />
+                            <img
+                              src={t.profilePicture}
+                              alt={t.name}
+                              className="teacher-avatar-img"
+                              style={{ objectPosition: t.profilePicturePosition || '50% 50%' }}
+                            />
                           ) : (
                             <div className="teacher-avatar-placeholder">
                               <Users size={14} />
@@ -1592,7 +1619,30 @@ export default function AdminDashboard({
                     {editError}
                   </div>
                 )}
-                
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  {editingTeacher.profilePicture ? (
+                    <img
+                      src={editingTeacher.profilePicture}
+                      alt={editingTeacher.name}
+                      className="teacher-avatar-img"
+                      style={{ width: '48px', height: '48px', objectPosition: editingTeacher.profilePicturePosition || '50% 50%' }}
+                    />
+                  ) : (
+                    <div className="teacher-avatar-placeholder" style={{ width: '48px', height: '48px' }}>
+                      <Users size={16} />
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    className="btn btn-outline"
+                    style={{ padding: '0.35rem 0.75rem', fontSize: '12px' }}
+                    onClick={() => setShowTeacherAvatarEditor(true)}
+                  >
+                    แก้ไขรูปประจำตัว
+                  </button>
+                </div>
+
                 <div className="form-group">
                   <label style={{ fontWeight: 600, display: 'block', marginBottom: '0.25rem' }}>ชื่อ-นามสกุล</label>
                   <input
@@ -1711,6 +1761,17 @@ export default function AdminDashboard({
             </form>
           </div>
         </div>
+      )}
+
+      {showTeacherAvatarEditor && editingTeacher && (
+        <AvatarEditorModal
+          currentImage={editingTeacher.profilePicture}
+          currentPosition={editingTeacher.profilePicturePosition}
+          onSave={handleTeacherAvatarSave}
+          onDelete={handleTeacherAvatarDelete}
+          onClose={() => setShowTeacherAvatarEditor(false)}
+          title={`รูปประจำตัว: ${editingTeacher.name}`}
+        />
       )}
 
       {/* View Post-Teaching Record Report Modal */}

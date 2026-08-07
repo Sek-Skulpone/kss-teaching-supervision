@@ -21,7 +21,7 @@ import EvaluationModal from './components/EvaluationModal';
 import EvaluationSummaryModal from './components/EvaluationSummaryModal';
 import { formatThaiDateFull } from './utils/thaiDate';
 import { getStatusLabel } from './utils/statusLabels';
-import { resizeImage } from './utils/imageResize';
+import AvatarEditorModal from './components/AvatarEditorModal';
 import {
   getUsers,
   addTeacher,
@@ -104,8 +104,8 @@ export default function App() {
   const [changePasswordError, setChangePasswordError] = useState('');
   const [isChangingPassword, setIsChangingPassword] = useState(false);
 
-  // Profile Picture Upload State
-  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  // Profile Picture Editor State
+  const [showAvatarEditor, setShowAvatarEditor] = useState(false);
 
   // Load initial data on mount
   useEffect(() => {
@@ -296,34 +296,36 @@ export default function App() {
     }
   };
 
-  // Profile Picture Upload Handler (self-service, any logged-in role)
-  const handleAvatarUpload = async (e) => {
-    const file = e.target.files && e.target.files[0];
-    e.target.value = ''; // allow re-selecting the same file later
-    if (!file) return;
-
-    if (!file.type.startsWith('image/')) {
-      alert('กรุณาเลือกไฟล์รูปภาพเท่านั้น');
-      return;
-    }
-
-    setIsUploadingAvatar(true);
+  // Profile Picture Save/Delete Handlers (self-service, any logged-in role)
+  const handleAvatarSave = async (dataUrl, position) => {
     try {
-      const dataUrl = await resizeImage(file, { maxWidth: 240, maxHeight: 240, quality: 0.8 });
-      const success = await updateTeacher(currentUser.id, { profilePicture: dataUrl });
+      const success = await updateTeacher(currentUser.id, { profilePicture: dataUrl, profilePicturePosition: position });
       if (success) {
-        const updatedUser = { ...currentUser, profilePicture: dataUrl };
+        const updatedUser = { ...currentUser, profilePicture: dataUrl, profilePicturePosition: position };
         setCurrentUser(updatedUser);
         localStorage.setItem('ks_current_user', JSON.stringify(updatedUser));
         await refreshTeachersData();
-      } else {
-        alert('เกิดข้อผิดพลาดในการบันทึกรูปภาพ กรุณาลองใหม่อีกครั้ง');
       }
+      return success;
     } catch (err) {
-      console.error('Error uploading avatar:', err);
-      alert('ไม่สามารถอ่านไฟล์รูปภาพได้ กรุณาลองใหม่อีกครั้ง');
-    } finally {
-      setIsUploadingAvatar(false);
+      console.error('Error saving avatar:', err);
+      return false;
+    }
+  };
+
+  const handleAvatarDelete = async () => {
+    try {
+      const success = await updateTeacher(currentUser.id, { profilePicture: null, profilePicturePosition: null });
+      if (success) {
+        const updatedUser = { ...currentUser, profilePicture: null, profilePicturePosition: null };
+        setCurrentUser(updatedUser);
+        localStorage.setItem('ks_current_user', JSON.stringify(updatedUser));
+        await refreshTeachersData();
+      }
+      return success;
+    } catch (err) {
+      console.error('Error deleting avatar:', err);
+      return false;
     }
   };
 
@@ -757,22 +759,25 @@ export default function App() {
         </div>
         
         <div className="nav-user">
-          <label className="user-avatar-upload" title="อัปโหลดรูปประจำตัว">
+          <button
+            type="button"
+            className="user-avatar-upload"
+            title="แก้ไขรูปประจำตัว"
+            onClick={() => setShowAvatarEditor(true)}
+          >
             {currentUser.profilePicture ? (
-              <img src={currentUser.profilePicture} alt="รูปประจำตัว" className="user-avatar-img" />
+              <img
+                src={currentUser.profilePicture}
+                alt="รูปประจำตัว"
+                className="user-avatar-img"
+                style={{ objectPosition: currentUser.profilePicturePosition || '50% 50%' }}
+              />
             ) : (
               <div className="user-avatar-placeholder">
                 <Camera size={14} />
               </div>
             )}
-            <input
-              type="file"
-              accept="image/*"
-              onChange={handleAvatarUpload}
-              disabled={isUploadingAvatar}
-              style={{ display: 'none' }}
-            />
-          </label>
+          </button>
           <div className={`user-badge ${currentUser.role === 'admin' ? 'role-admin' : ''}`}>
             {currentUser.role === 'admin' ? <ShieldAlert size={14} /> : <Users size={14} />}
             <span>{currentUser.name} ({currentUser.position})</span>
@@ -787,6 +792,16 @@ export default function App() {
           </button>
         </div>
       </header>
+
+      {showAvatarEditor && (
+        <AvatarEditorModal
+          currentImage={currentUser.profilePicture}
+          currentPosition={currentUser.profilePicturePosition}
+          onSave={handleAvatarSave}
+          onDelete={handleAvatarDelete}
+          onClose={() => setShowAvatarEditor(false)}
+        />
+      )}
 
       {showChangePassword && (
         <div className="modal-overlay" onClick={() => setShowChangePassword(false)}>
