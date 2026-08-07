@@ -883,7 +883,7 @@ export default function AdminDashboard({
                               ) : (
                                 <div style={{ display: 'flex', alignItems: 'center', justifyBetween: 'space-between', gap: '0.5rem' }}>
                                   <span style={{ fontSize: '12px', color: 'var(--text-dark)' }}>
-                                    {req.date ? `${formatThaiDate(req.date)} (${req.time.split(' ')[0] || req.time})` : 'รอกำหนดวัน-เวลา'}
+                                    {req.date ? `${formatThaiDate(req.date)} (${req.time.split('(')[0].trim() || req.time})` : 'รอกำหนดวัน-เวลา'}
                                   </span>
                                   <button
                                     className="btn btn-outline"
@@ -1090,7 +1090,7 @@ export default function AdminDashboard({
                             </div>
                           ) : (
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
-                              <span>{formatThaiDate(req.date)} (เวลา {req.time.split(' ')[0] || req.time} น.)</span>
+                              <span>{formatThaiDate(req.date)} (เวลา {req.time.split('(')[0].trim() || req.time} น.)</span>
                               <button
                                 className="btn btn-outline"
                                 style={{ padding: '2px 6px', fontSize: '11px', whiteSpace: 'nowrap' }}
@@ -1922,7 +1922,7 @@ export default function AdminDashboard({
                             <tr key={s.id}>
                               <td style={{ fontWeight: 600 }}>{s.subject}</td>
                               <td>ม.{s.grade.replace('ม.', '')}/{s.room}</td>
-                              <td>{s.date ? `${formatThaiDate(s.date)} (${s.time.split(' ')[0] || s.time})` : '-'}</td>
+                              <td>{s.date ? `${formatThaiDate(s.date)} (${s.time.split('(')[0].trim() || s.time})` : '-'}</td>
                               <td>{s.supervisors && s.supervisors.length > 0 ? s.supervisors.map(sup => sup.name).join(', ') : '-'}</td>
                               <td style={{ textAlign: 'center' }}>
                                 <span className={`badge badge-${s.status}`}>
