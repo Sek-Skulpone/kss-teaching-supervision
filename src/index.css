@@ -129,9 +129,9 @@ body {
   cursor: pointer;
   flex-shrink: 0;
   display: block;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
+  width: 56px;
+  height: 56px;
+  border-radius: 10px;
   border: 2px solid rgba(255, 255, 255, 0.4);
   transition: var(--transition);
   overflow: hidden;
@@ -160,9 +160,9 @@ body {
 
 .teacher-avatar-img,
 .teacher-avatar-placeholder {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
   flex-shrink: 0;
 }
 
