@@ -26,8 +26,12 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     // The app stores all of its data in a single "system_db" collection
-    // (see src/db.js). Once requests are authenticated, only allow signed-in
-    // callers to read/write it.
+    // (see src/db.js) -- including PLC logs, which are stored as one
+    // document per log (`plclog_<id>`) rather than a single packed array,
+    // since each log embeds photos and a packed array would blow past
+    // Firestore's 1 MiB per-document limit. Keeping them inside system_db
+    // means this one rule covers them too. Once requests are authenticated,
+    // only allow signed-in callers to read/write it.
     match /system_db/{docId} {
       allow read, write: if request.auth != null;
     }

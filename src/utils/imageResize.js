@@ -1,9 +1,14 @@
 // Client-side image compressor used before storing photos as base64 data
-// URLs (Firestore documents have a size limit, so uploads are downscaled
-// and re-encoded as JPEG first). Resizes to fit within maxWidth x maxHeight
-// while preserving aspect ratio. Defaults match the original 800x800 preset
-// used for PLC/evaluation photos; pass smaller values for e.g. avatars.
-export const resizeImage = (file, { maxWidth = 800, maxHeight = 800, quality = 0.7 } = {}) => {
+// URLs. These are stored inside Firestore documents, which cap at 1 MiB, so
+// uploads are downscaled and re-encoded as JPEG first. Resizes to fit within
+// maxWidth x maxHeight while preserving aspect ratio.
+//
+// Defaults are tuned for the PLC / evaluation documentation photos that make
+// up the bulk of stored data: 700px @ 0.5 measures ~47KB per photo versus
+// ~104KB at the previous 800px @ 0.7, i.e. roughly half the storage and
+// transfer for images that are only ever viewed on a phone or in a modal.
+// Callers wanting a different trade-off (e.g. avatars) pass explicit values.
+export const resizeImage = (file, { maxWidth = 700, maxHeight = 700, quality = 0.5 } = {}) => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);

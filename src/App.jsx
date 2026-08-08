@@ -112,22 +112,31 @@ export default function App() {
     const loadData = async () => {
       setIsLoading(true);
       try {
-        const [usersData, supervisionsData, termPlansData, settingsData, plcLogsData] = await Promise.all([
+        const [usersData, supervisionsData, termPlansData, settingsData] = await Promise.all([
           getUsers(),
           getSupervisions(),
           getTermPlans(),
-          getSystemSettings(),
-          getPlcLogs()
+          getSystemSettings()
         ]);
         setTeachers(usersData);
         setSupervisions(supervisionsData);
         setTermPlans(termPlansData);
         setSettings(settingsData);
-        setPlcLogs(plcLogsData || []);
       } catch (e) {
         console.error("Error loading initial data from database:", e);
       } finally {
         setIsLoading(false);
+      }
+
+      // PLC logs carry embedded photos and are by far the heaviest payload
+      // (hundreds of KB), but nothing on the landing calendar needs them.
+      // Fetch them after the UI is already interactive so first paint isn't
+      // blocked on downloading images the user may never look at.
+      try {
+        const plcLogsData = await getPlcLogs();
+        setPlcLogs(plcLogsData || []);
+      } catch (e) {
+        console.error("Error loading PLC logs:", e);
       }
     };
     loadData();

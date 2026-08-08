@@ -1,7 +1,20 @@
 // Firebase Database Connector (Cloud Firestore)
 // Optimized with single-document collections to minimize read/write count (completely free-tier safe)
 import { initializeApp } from 'firebase/app';
-import { getFirestore, doc, getDoc, setDoc, runTransaction } from 'firebase/firestore';
+import {
+  getFirestore,
+  doc,
+  getDoc,
+  setDoc,
+  deleteDoc,
+  collection,
+  getDocs,
+  query,
+  where,
+  documentId,
+  writeBatch,
+  runTransaction
+} from 'firebase/firestore';
 import { hashPassword } from './utils/auth';
 
 // NOTE: this config is not a secret — Firebase's own docs confirm the client
@@ -72,49 +85,50 @@ let dbCache = {
 
 const cacheTimeout = 1000; // 1 second cache window
 
+// NOTE: plcLogs are deliberately NOT part of this bulk load. They carry
+// embedded base64 photos (hundreds of KB) and are only needed on the PLC
+// tabs, so they're fetched separately/on demand by getPlcLogs() instead of
+// being downloaded on every page load just to render the calendar.
 const ensureDBLoaded = async (force = false) => {
   const now = Date.now();
-  if (!force && dbCache.teachers && dbCache.supervisions && dbCache.termPlans && dbCache.plcLogs && (now - dbCache.lastLoaded < cacheTimeout)) {
+  if (!force && dbCache.teachers && dbCache.supervisions && dbCache.termPlans && (now - dbCache.lastLoaded < cacheTimeout)) {
     return dbCache;
   }
-  
+
   if (!isFirebaseInitialized) {
     const teachers = safeJsonParse(localStorage.getItem('ks_teachers'), SEED_USERS);
     const supervisions = safeJsonParse(localStorage.getItem('ks_supervisions'), []);
     const termPlans = safeJsonParse(localStorage.getItem('ks_term_plans'), []);
-    const plcLogs = safeJsonParse(localStorage.getItem('ks_plc_logs'), []);
-    dbCache = { teachers, supervisions, termPlans, plcLogs, lastLoaded: now };
+    dbCache = { ...dbCache, teachers, supervisions, termPlans, lastLoaded: now };
     return dbCache;
   }
-  
+
   try {
     // Parallel fetch from Firestore
-    const [teachersSnap, supervisionsSnap, termPlansSnap, plcLogsSnap] = await Promise.all([
+    const [teachersSnap, supervisionsSnap, termPlansSnap] = await Promise.all([
       getDoc(doc(db, "system_db", "teachers")),
       getDoc(doc(db, "system_db", "supervisions")),
-      getDoc(doc(db, "system_db", "term_plans")),
-      getDoc(doc(db, "system_db", "plc_logs"))
+      getDoc(doc(db, "system_db", "term_plans"))
     ]);
-    
+
     let teachers = SEED_USERS;
     let supervisions = [];
     let termPlans = [];
-    let plcLogs = [];
-    
+
     // Process Teachers
     if (teachersSnap.exists()) {
       teachers = teachersSnap.data().list || SEED_USERS;
     } else {
       await setDoc(doc(db, "system_db", "teachers"), { list: SEED_USERS });
     }
-    
+
     // Process Supervisions
     if (supervisionsSnap.exists()) {
       supervisions = supervisionsSnap.data().list || [];
     } else {
       await setDoc(doc(db, "system_db", "supervisions"), { list: [] });
     }
-    
+
     // Process Term Plans
     if (termPlansSnap.exists()) {
       termPlans = termPlansSnap.data().list || [];
@@ -122,29 +136,20 @@ const ensureDBLoaded = async (force = false) => {
       await setDoc(doc(db, "system_db", "term_plans"), { list: [] });
     }
 
-    // Process PLC Logs
-    if (plcLogsSnap.exists()) {
-      plcLogs = plcLogsSnap.data().list || [];
-    } else {
-      await setDoc(doc(db, "system_db", "plc_logs"), { list: [] });
-    }
-    
-    dbCache = { teachers, supervisions, termPlans, plcLogs, lastLoaded: now };
-    
+    dbCache = { ...dbCache, teachers, supervisions, termPlans, lastLoaded: now };
+
     // Cache locally
     localStorage.setItem('ks_teachers', JSON.stringify(teachers));
     localStorage.setItem('ks_supervisions', JSON.stringify(supervisions));
     localStorage.setItem('ks_term_plans', JSON.stringify(termPlans));
-    localStorage.setItem('ks_plc_logs', JSON.stringify(plcLogs));
-    
+
     return dbCache;
   } catch (e) {
     console.warn("Firestore fetch failed, using local storage cache:", e);
     const teachers = safeJsonParse(localStorage.getItem('ks_teachers'), SEED_USERS);
     const supervisions = safeJsonParse(localStorage.getItem('ks_supervisions'), []);
     const termPlans = safeJsonParse(localStorage.getItem('ks_term_plans'), []);
-    const plcLogs = safeJsonParse(localStorage.getItem('ks_plc_logs'), []);
-    dbCache = { teachers, supervisions, termPlans, plcLogs, lastLoaded: now };
+    dbCache = { ...dbCache, teachers, supervisions, termPlans, lastLoaded: now };
     return dbCache;
   }
 };
@@ -152,11 +157,12 @@ const ensureDBLoaded = async (force = false) => {
 const byteSizeOf = (value) => new TextEncoder().encode(JSON.stringify(value)).length;
 
 // Maps the Firestore document name to the dbCache property it's stored under.
+// (plc_logs is absent on purpose -- it uses per-document storage, not the
+// single-array-document pattern these helpers implement. See section 5.)
 const CACHE_KEY_BY_DATATYPE = {
   teachers: 'teachers',
   supervisions: 'supervisions',
-  term_plans: 'termPlans',
-  plc_logs: 'plcLogs'
+  term_plans: 'termPlans'
 };
 
 // Atomically read-modify-write a collection using a Firestore transaction, so
@@ -492,9 +498,97 @@ export const updateSystemSettings = async (newSettings) => {
    5. PLC LOGS MANAGEMENT
    ========================================================================== */
 
+// PLC logs are stored as ONE FIRESTORE DOCUMENT PER LOG, unlike the other
+// collections which pack everything into a single `system_db/<name>` document.
+//
+// Why: each log embeds up to 4 base64 photos (~50-100KB each). Firestore caps
+// a single document at 1 MiB, so packing every teacher's logs into one array
+// document hits a hard ceiling fast -- with 33 teachers x 4 PLC cycles the
+// collection would need ~50 MB. Per-document storage means the 1 MiB limit
+// applies to a single log (comfortably under it) instead of to all of them
+// combined, which removes the ceiling entirely.
+// Each log lives at `system_db/plclog_<id>` -- deliberately a document inside
+// the existing system_db collection rather than a new top-level collection,
+// so it keeps working under Firestore rules scoped to `match /system_db/{docId}`
+// without needing a rules change deployed first.
+const PLC_DOC_PREFIX = 'plclog_';
+const plcDocId = (logId) => `${PLC_DOC_PREFIX}${logId}`;
+const LEGACY_PLC_DOC = ['system_db', 'plc_logs'];
+const PLC_MIGRATION_DOC = ['system_db', 'plc_logs_migration'];
+
+const readLocalPlcLogs = () => safeJsonParse(localStorage.getItem('ks_plc_logs'), []);
+
+const cachePlcLogsLocally = (logs) => {
+  try {
+    localStorage.setItem('ks_plc_logs', JSON.stringify(logs));
+  } catch (e) {
+    // Photos can push this past the ~5MB localStorage quota. The offline
+    // mirror is a nice-to-have, so degrade rather than break the save.
+    console.warn('Could not cache PLC logs locally (quota?):', e);
+  }
+};
+
+// One-time move of any logs still living in the legacy single-document array
+// into the per-document collection. Non-destructive: the legacy document is
+// left untouched as a backup, and a marker document prevents re-running (so
+// legitimately deleted logs don't get resurrected on the next load).
+const migrateLegacyPlcLogs = async () => {
+  const markerRef = doc(db, ...PLC_MIGRATION_DOC);
+  const markerSnap = await getDoc(markerRef);
+  if (markerSnap.exists() && markerSnap.data().done) return;
+
+  const legacySnap = await getDoc(doc(db, ...LEGACY_PLC_DOC));
+  const legacyLogs = legacySnap.exists() ? (legacySnap.data().list || []) : [];
+
+  if (legacyLogs.length > 0) {
+    // Firestore batches cap at 500 writes; PLC logs will never approach that,
+    // but chunk anyway so this stays correct as data grows.
+    for (let i = 0; i < legacyLogs.length; i += 400) {
+      const batch = writeBatch(db);
+      legacyLogs.slice(i, i + 400).forEach(log => {
+        batch.set(doc(db, 'system_db', plcDocId(log.id)), log);
+      });
+      await batch.commit();
+    }
+    console.log(`Migrated ${legacyLogs.length} PLC log(s) to per-document storage.`);
+  }
+
+  await setDoc(markerRef, { done: true, migratedAt: new Date().toISOString(), count: legacyLogs.length });
+};
+
 export const getPlcLogs = async () => {
-  const dbData = await ensureDBLoaded();
-  return dbData.plcLogs;
+  if (!isFirebaseInitialized) return readLocalPlcLogs();
+
+  try {
+    await migrateLegacyPlcLogs();
+    // Document-ID range query bounded by the shared prefix, so this reads only
+    // the PLC log documents and not the large packed array documents that
+    // share the system_db collection.  is the conventional high sentinel
+    // for Firestore prefix queries -- it sorts after any realistic id suffix.
+    const snap = await getDocs(query(
+      collection(db, 'system_db'),
+      where(documentId(), '>=', PLC_DOC_PREFIX),
+      where(documentId(), '<=', `${PLC_DOC_PREFIX}`)
+    ));
+    const logs = snap.docs.map(d => d.data());
+    dbCache.plcLogs = logs;
+    cachePlcLogsLocally(logs);
+    return logs;
+  } catch (e) {
+    console.warn('Failed to load PLC logs from Firestore, using local cache:', e);
+    return readLocalPlcLogs();
+  }
+};
+
+// Guards a single log document against Firestore's 1 MiB per-document limit.
+const assertPlcLogFits = (log) => {
+  const size = byteSizeOf(log);
+  if (size > MAX_DOC_BYTES) {
+    throw new Error(
+      `บันทึก PLC นี้มีขนาดใหญ่เกินไป (${(size / 1024).toFixed(0)}KB จากสูงสุด ${(MAX_DOC_BYTES / 1024).toFixed(0)}KB) ` +
+      `กรุณาลดจำนวนรูปภาพลงแล้วบันทึกใหม่อีกครั้ง`
+    );
+  }
 };
 
 export const addPlcLog = async (logData) => {
@@ -503,20 +597,77 @@ export const addPlcLog = async (logData) => {
     submittedAt: new Date().toISOString(),
     ...logData
   };
-  const { success } = await mutateCollection('plc_logs', (list) => [...list, newLog]);
-  return success ? newLog : null;
+
+  if (!isFirebaseInitialized) {
+    const logs = [...readLocalPlcLogs(), newLog];
+    dbCache.plcLogs = logs;
+    cachePlcLogsLocally(logs);
+    return newLog;
+  }
+
+  try {
+    assertPlcLogFits(newLog);
+    await setDoc(doc(db, 'system_db', plcDocId(newLog.id)), newLog);
+    const logs = [...(dbCache.plcLogs || readLocalPlcLogs()), newLog];
+    dbCache.plcLogs = logs;
+    cachePlcLogsLocally(logs);
+    return newLog;
+  } catch (e) {
+    console.error('Failed to add PLC log:', e);
+    return null;
+  }
 };
 
 export const updatePlcLog = async (logId, updatedFields) => {
-  const { success } = await mutateCollection('plc_logs', (list) =>
-    list.map(log => (log.id === logId ? { ...log, ...updatedFields, updatedAt: new Date().toISOString() } : log))
-  );
-  return success;
+  const applyLocally = (logs) =>
+    logs.map(log => (log.id === logId ? { ...log, ...updatedFields, updatedAt: new Date().toISOString() } : log));
+
+  if (!isFirebaseInitialized) {
+    const logs = applyLocally(readLocalPlcLogs());
+    dbCache.plcLogs = logs;
+    cachePlcLogsLocally(logs);
+    return true;
+  }
+
+  try {
+    const ref = doc(db, 'system_db', plcDocId(logId));
+    const snap = await getDoc(ref);
+    if (!snap.exists()) return false;
+
+    const updated = { ...snap.data(), ...updatedFields, updatedAt: new Date().toISOString() };
+    assertPlcLogFits(updated);
+    await setDoc(ref, updated);
+
+    const logs = applyLocally(dbCache.plcLogs || readLocalPlcLogs());
+    dbCache.plcLogs = logs;
+    cachePlcLogsLocally(logs);
+    return true;
+  } catch (e) {
+    console.error('Failed to update PLC log:', e);
+    return false;
+  }
 };
 
 export const deletePlcLog = async (logId) => {
-  const { success } = await mutateCollection('plc_logs', (list) => list.filter(log => log.id !== logId));
-  return success;
+  const removeLocally = (logs) => logs.filter(log => log.id !== logId);
+
+  if (!isFirebaseInitialized) {
+    const logs = removeLocally(readLocalPlcLogs());
+    dbCache.plcLogs = logs;
+    cachePlcLogsLocally(logs);
+    return true;
+  }
+
+  try {
+    await deleteDoc(doc(db, 'system_db', plcDocId(logId)));
+    const logs = removeLocally(dbCache.plcLogs || readLocalPlcLogs());
+    dbCache.plcLogs = logs;
+    cachePlcLogsLocally(logs);
+    return true;
+  } catch (e) {
+    console.error('Failed to delete PLC log:', e);
+    return false;
+  }
 };
 
 export const updateTeacherPlcGroup = async (teacherId, plcGroup) => {
