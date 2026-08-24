@@ -1,8 +1,21 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { OBSERVATION_ITEMS } from '../utils/observationItems';
 import { formatThaiDate } from '../utils/thaiDate';
+import { getEvaluationImages } from '../db';
 
 export default function EvaluationSummaryModal({ supervision, onClose, canDeleteEvaluations = false, onDeleteEvaluation }) {
+  // Photos live outside the supervision record (see db.js EVAL_IMG_PREFIX),
+  // so they're fetched when this report opens rather than being carried in
+  // the supervisions payload every page load.
+  const [imagesBySupervisor, setImagesBySupervisor] = useState({});
+
+  useEffect(() => {
+    let cancelled = false;
+    getEvaluationImages(supervision.id)
+      .then(map => { if (!cancelled) setImagesBySupervisor(map || {}); })
+      .catch(err => console.error('Could not load evaluation images:', err));
+    return () => { cancelled = true; };
+  }, [supervision.id]);
   const [activeLightboxImage, setActiveLightboxImage] = useState(null);
   // 'average' shows the committee-wide averages; otherwise holds the
   // supervisorId whose individual scoring is being viewed.
@@ -347,9 +360,12 @@ export default function EvaluationSummaryModal({ supervision, onClose, canDelete
               by the supervisor who submitted them. Follows the same
               average/individual scoping as the rest of the report. */}
           {avgData && (() => {
+            // Prefer the separately-stored photos; fall back to any still
+            // inline on older records that haven't been migrated yet.
+            const imagesFor = (ev) => imagesBySupervisor[ev.supervisorId] || ev.images || [];
             const shown = avgData.evalsList
               .filter(ev => activeView === 'average' || ev.supervisorId === activeView)
-              .filter(ev => ev.images && ev.images.length > 0);
+              .filter(ev => imagesFor(ev).length > 0);
             if (shown.length === 0) return null;
 
             return (
@@ -364,7 +380,7 @@ export default function EvaluationSummaryModal({ supervision, onClose, canDelete
                         โดย {ev.supervisorName}
                       </div>
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: '8px' }}>
-                        {ev.images.map((imgUrl, imgIdx) => (
+                        {imagesFor(ev).map((imgUrl, imgIdx) => (
                           <div
                             key={imgIdx}
                             role="button"

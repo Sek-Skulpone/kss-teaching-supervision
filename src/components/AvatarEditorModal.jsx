@@ -36,7 +36,13 @@ export default function AvatarEditorModal({ currentImage, currentPosition, onSav
     try {
       // Downscale but don't force-crop to square here -- object-position
       // dragging below lets the user choose which part shows.
-      const dataUrl = await resizeImage(file, { maxWidth: 320, maxHeight: 320, quality: 0.8 });
+      //
+      // Kept small deliberately: every teacher's avatar lives in the single
+      // shared `teachers` document that loads on EVERY page view, so this
+      // size is paid by everyone on every visit. 200px still renders sharp
+      // at the 56px (navbar) and 44px (table) sizes these are shown at,
+      // even on a 3x display.
+      const dataUrl = await resizeImage(file, { maxWidth: 200, maxHeight: 200, quality: 0.7 });
       setPendingImage(dataUrl);
       setPosition(DEFAULT_POSITION);
     } catch (err) {

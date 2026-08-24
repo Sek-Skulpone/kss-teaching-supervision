@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { toLocalDateString } from '../utils/localDate';
 
 const MONTHS_TH = [
   'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
@@ -9,14 +10,6 @@ const MONTHS_TH = [
 const DAYS_TH = ['อา.', 'จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.'];
 
 const DAYS_FULL_TH = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'];
-
-// Local-time YYYY-MM-DD. Using toISOString() directly would convert to UTC
-// first, which in Thailand (UTC+7) reports the previous day until 07:00
-// local -- so "today" has to be derived from the local calendar date.
-const toLocalDateString = (dateObj) => {
-  const offset = dateObj.getTimezoneOffset();
-  return new Date(dateObj.getTime() - offset * 60 * 1000).toISOString().split('T')[0];
-};
 
 export default function Calendar({ supervisions, onEventClick }) {
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -64,20 +57,16 @@ export default function Calendar({ supervisions, onEventClick }) {
     daysArray.push({
       day: prevMonthTotalDays - i,
       monthOffset: -1,
-      dateString: new Date(year, month - 1, prevMonthTotalDays - i).toISOString().split('T')[0]
+      dateString: toLocalDateString(new Date(year, month - 1, prevMonthTotalDays - i))
     });
   }
 
   // Current month days
   for (let i = 1; i <= totalDays; i++) {
-    const dateObj = new Date(year, month, i);
-    // Adjusting for local timezone string representation (YYYY-MM-DD)
-    const offset = dateObj.getTimezoneOffset();
-    const localDate = new Date(dateObj.getTime() - (offset * 60 * 1000));
     daysArray.push({
       day: i,
       monthOffset: 0,
-      dateString: localDate.toISOString().split('T')[0]
+      dateString: toLocalDateString(new Date(year, month, i))
     });
   }
 
@@ -87,7 +76,7 @@ export default function Calendar({ supervisions, onEventClick }) {
     daysArray.push({
       day: i,
       monthOffset: 1,
-      dateString: new Date(year, month + 1, i).toISOString().split('T')[0]
+      dateString: toLocalDateString(new Date(year, month + 1, i))
     });
   }
 

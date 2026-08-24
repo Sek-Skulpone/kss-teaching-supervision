@@ -250,8 +250,56 @@ export const updateTeacher = async (teacherId, updatedFields) => {
    2. SUPERVISION BOOKINGS
    ========================================================================== */
 
+// Moves photos that older evaluations stored inline out into the per-
+// supervision photo documents, shrinking the shared supervisions document
+// (see EVAL_IMG_PREFIX below for why). Runs at most once per page session,
+// and only actually writes if inline photos are still present.
+let inlineEvalImagesChecked = false;
+const migrateInlineEvaluationImages = async (supervisions) => {
+  if (inlineEvalImagesChecked || !isFirebaseInitialized) return false;
+  inlineEvalImagesChecked = true;
+
+  const needing = supervisions.filter(s =>
+    Object.values(s.evaluations || {}).some(ev => Array.isArray(ev.images) && ev.images.length > 0)
+  );
+  if (needing.length === 0) return false;
+
+  try {
+    for (const sup of needing) {
+      for (const [supervisorId, ev] of Object.entries(sup.evaluations || {})) {
+        if (Array.isArray(ev.images) && ev.images.length > 0) {
+          await writeEvaluationImages(sup.id, supervisorId, ev.images);
+        }
+      }
+    }
+
+    // Strip the now-duplicated inline photos from the supervisions document.
+    await mutateCollection('supervisions', (list) =>
+      list.map(s => {
+        if (!needing.some(n => n.id === s.id)) return s;
+        const evaluations = {};
+        Object.entries(s.evaluations || {}).forEach(([id, ev]) => {
+          const { images, ...rest } = ev;
+          evaluations[id] = { ...rest, imageCount: Array.isArray(images) ? images.length : (ev.imageCount || 0) };
+        });
+        return { ...s, evaluations };
+      })
+    );
+    console.log(`Moved inline evaluation photos out of ${needing.length} supervision(s).`);
+    return true;
+  } catch (e) {
+    // Non-fatal: the app still works with photos inline, it just stays large.
+    console.warn('Could not move inline evaluation images:', e);
+    return false;
+  }
+};
+
 export const getSupervisions = async () => {
   const dbData = await ensureDBLoaded();
+  if (await migrateInlineEvaluationImages(dbData.supervisions)) {
+    const refreshed = await ensureDBLoaded(true);
+    return refreshed.supervisions;
+  }
   return dbData.supervisions;
 };
 
@@ -278,6 +326,17 @@ export const updateSupervision = async (supervisionId, updatedFields) => {
 
 export const deleteSupervision = async (supervisionId) => {
   const { success } = await mutateCollection('supervisions', (list) => list.filter(s => s.id !== supervisionId));
+
+  // Remove the companion photo document so deleted supervisions don't leave
+  // their evaluation images behind (see EVAL_IMG_PREFIX below).
+  if (success && isFirebaseInitialized) {
+    try {
+      await deleteDoc(doc(db, 'system_db', `evalimg_${supervisionId}`));
+    } catch (e) {
+      console.warn('Supervision deleted but its evaluation images could not be removed:', e);
+    }
+  }
+  localStorage.removeItem(`ks_evalimg_${supervisionId}`);
   return success;
 };
 
@@ -381,10 +440,88 @@ export const removeSupervisor = async (supervisionId, supervisorId) => {
 // snapshot that predates the first member's submission and silently erase
 // it -- which is why supervisions with several committee members were only
 // ever showing a single evaluation.
+// Evaluation photos are stored OUTSIDE the supervisions document, one photo
+// document per supervision at `system_db/evalimg_<supervisionId>`, shaped as
+// { images: { [supervisorId]: [dataUrl, ...] } }.
+//
+// Two reasons, both measured against real data:
+//   * Ceiling. A single evaluation with 4 photos measured ~187KB. The whole
+//     supervisions collection lives in ONE Firestore document capped at
+//     1 MiB, and every supervision has a 3-person committee, so a handful of
+//     evaluated lessons would exceed it and block all further saves.
+//   * Load cost. The supervisions document is fetched on EVERY page view to
+//     draw the calendar. Keeping photos inline meant downloading every
+//     evaluation photo in the school just to see the month grid.
+// Keeping only the text and ratings inline leaves the supervisions document
+// small and lets photos be fetched on demand by the report screens.
+const EVAL_IMG_PREFIX = 'evalimg_';
+const evalImgDocId = (supervisionId) => `${EVAL_IMG_PREFIX}${supervisionId}`;
+
+/** Returns { [supervisorId]: [dataUrl, ...] } for one supervision. */
+export const getEvaluationImages = async (supervisionId) => {
+  if (!isFirebaseInitialized) {
+    return safeJsonParse(localStorage.getItem(`ks_evalimg_${supervisionId}`), {});
+  }
+  try {
+    const snap = await getDoc(doc(db, 'system_db', evalImgDocId(supervisionId)));
+    const images = snap.exists() ? (snap.data().images || {}) : {};
+    try {
+      localStorage.setItem(`ks_evalimg_${supervisionId}`, JSON.stringify(images));
+    } catch { /* quota - the local mirror is optional */ }
+    return images;
+  } catch (e) {
+    console.warn('Failed to load evaluation images, using local cache:', e);
+    return safeJsonParse(localStorage.getItem(`ks_evalimg_${supervisionId}`), {});
+  }
+};
+
+// Writes one supervisor's photos into the supervision's photo document,
+// leaving other supervisors' photos untouched.
+const writeEvaluationImages = async (supervisionId, supervisorId, images) => {
+  const ref = doc(db, 'system_db', evalImgDocId(supervisionId));
+  await runTransaction(db, async (transaction) => {
+    const snap = await transaction.get(ref);
+    const current = snap.exists() ? (snap.data().images || {}) : {};
+    const next = { ...current };
+    if (images && images.length > 0) {
+      next[supervisorId] = images;
+    } else {
+      delete next[supervisorId];
+    }
+
+    const payload = { images: next };
+    const size = byteSizeOf(payload);
+    if (size > MAX_DOC_BYTES) {
+      throw new Error(
+        `รูปภาพประกอบการนิเทศของรายการนี้มีขนาดรวมใหญ่เกินไป ` +
+        `(${(size / 1024).toFixed(0)}KB จากสูงสุด ${(MAX_DOC_BYTES / 1024).toFixed(0)}KB) ` +
+        `กรุณาลดจำนวนรูปภาพลงแล้วบันทึกใหม่อีกครั้ง`
+      );
+    }
+    transaction.set(ref, payload);
+  });
+  localStorage.removeItem(`ks_evalimg_${supervisionId}`);
+};
+
 export const submitEvaluation = async (supervisionId, supervisorId, evaluation) => {
+  const { images = [], ...evaluationText } = evaluation;
+
+  if (isFirebaseInitialized) {
+    try {
+      await writeEvaluationImages(supervisionId, supervisorId, images);
+    } catch (e) {
+      console.error('Failed to save evaluation images:', e);
+      return false;
+    }
+  }
+
+  // Stored without the photo payload; imageCount lets the UI show how many
+  // there are without having to fetch them.
+  const stored = { ...evaluationText, imageCount: images.length };
+
   const { success } = await mutateCollection('supervisions', (list) =>
     list.map(s => (s.id === supervisionId
-      ? { ...s, evaluations: { ...(s.evaluations || {}), [supervisorId]: evaluation } }
+      ? { ...s, evaluations: { ...(s.evaluations || {}), [supervisorId]: stored } }
       : s))
   );
   return success;
@@ -402,6 +539,16 @@ export const deleteEvaluation = async (supervisionId, supervisorId) => {
       return { ...s, evaluations: remaining };
     })
   );
+
+  // Drop the photos too, so removing an evaluation doesn't leave its images
+  // orphaned in the photo document forever.
+  if (success && isFirebaseInitialized) {
+    try {
+      await writeEvaluationImages(supervisionId, supervisorId, []);
+    } catch (e) {
+      console.warn('Evaluation removed but its images could not be cleaned up:', e);
+    }
+  }
   return success;
 };
 

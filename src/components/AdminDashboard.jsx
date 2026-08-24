@@ -1,10 +1,12 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AlertCircle, CheckCircle2, UserCheck, Eye, ClipboardList, Trash2, Users, UserPlus, Shield, RotateCw, Edit, CalendarPlus } from 'lucide-react';
 import EvaluationModal from './EvaluationModal';
 import EvaluationSummaryModal from './EvaluationSummaryModal';
 import AvatarEditorModal from './AvatarEditorModal';
 import { formatThaiDate } from '../utils/thaiDate';
 import { getStatusLabel } from '../utils/statusLabels';
+import { todayDateString } from '../utils/localDate';
+import { getEvaluationImages } from '../db';
 
 const PERIODS_LIST = [
   'คาบที่ 1 (08.30 - 09.20 น.)',
@@ -55,6 +57,10 @@ export default function AdminDashboard({
   const [plcFilterSearch, setPlcFilterSearch] = useState('');
   const [selectedPlcTeacher, setSelectedPlcTeacher] = useState(null);
   const [selectedPlcLogDetail, setSelectedPlcLogDetail] = useState(null);
+  // Evaluation photos are stored apart from the supervision record (see
+  // db.js EVAL_IMG_PREFIX) and pulled in only when a report that shows them
+  // is opened. Keyed by supervision id.
+  const [evalImagesBySupervision, setEvalImagesBySupervision] = useState({});
   const [activePlcLightboxImage, setActivePlcLightboxImage] = useState(null);
 
   // States for scheduling date/time
@@ -126,20 +132,54 @@ export default function AdminDashboard({
     setSelectedSupervisionYear(settings.currentAcademicYear);
   }
 
-  // Get current date string in local time (YYYY-MM-DD)
-  const getTodayDateString = () => {
-    const today = new Date();
-    const offset = today.getTimezoneOffset();
-    const localToday = new Date(today.getTime() - (offset * 60 * 1000));
-    return localToday.toISOString().split('T')[0];
-  };
-
-  const todayStr = getTodayDateString();
+  const todayStr = todayDateString();
 
   // Legacy records created before the academicYear field existed have no
   // value at all -- treat those as belonging to the current academic year
   // instead of silently hiding them from every year filter forever.
   const matchesYear = (record, selectedYear) => (record.academicYear || settings.currentAcademicYear) === selectedYear;
+
+  // Fetch evaluation photos for whichever PLC report is open. Both reports
+  // surface the cycle-3 photos, which come from the supervision's
+  // evaluations rather than from a PLC log.
+  const plcReportSupervisionId = (() => {
+    if (selectedPlcTeacher) {
+      return supervisions.find(s => s.teacherId === selectedPlcTeacher.id && matchesYear(s, selectedAdminPlcYear))?.id;
+    }
+    if (selectedPlcLogDetail) {
+      return supervisions.find(s =>
+        s.teacherId === selectedPlcLogDetail.teacherId &&
+        s.academicYear === selectedPlcLogDetail.academicYear
+      )?.id;
+    }
+    return undefined;
+  })();
+
+  useEffect(() => {
+    if (!plcReportSupervisionId || evalImagesBySupervision[plcReportSupervisionId]) return;
+    let cancelled = false;
+    getEvaluationImages(plcReportSupervisionId)
+      .then(map => {
+        if (!cancelled) {
+          setEvalImagesBySupervision(prev => ({ ...prev, [plcReportSupervisionId]: map || {} }));
+        }
+      })
+      .catch(err => console.error('Could not load evaluation images:', err));
+    return () => { cancelled = true; };
+  }, [plcReportSupervisionId, evalImagesBySupervision]);
+
+  // Photos for one supervision's evaluations, falling back to any still
+  // stored inline on records that predate the split.
+  const evaluationImagesFor = (sup) => {
+    if (!sup) return [];
+    const stored = evalImagesBySupervision[sup.id] || {};
+    const out = [];
+    Object.entries(sup.evaluations || {}).forEach(([supervisorId, ev]) => {
+      const imgs = stored[supervisorId] || ev.images || [];
+      out.push(...imgs);
+    });
+    return out;
+  };
 
   // Supervisions for the currently selected academic year only
   const yearSupervisions = supervisions.filter(s => matchesYear(s, selectedSupervisionYear));
@@ -2630,14 +2670,7 @@ export default function AdminDashboard({
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                 {(() => {
                   const sup = supervisions.find(s => s.teacherId === selectedPlcTeacher.id && matchesYear(s, selectedAdminPlcYear));
-                  const cycle3Images = [];
-                  if (sup && sup.evaluations) {
-                    Object.values(sup.evaluations).forEach(ev => {
-                      if (ev.images && Array.isArray(ev.images)) {
-                        cycle3Images.push(...ev.images);
-                      }
-                    });
-                  }
+                  const cycle3Images = evaluationImagesFor(sup);
 
                   return [
                     { cycleNum: 1, name: 'วงรอบที่ 1: วิเคราะห์ปัญหาและกำหนดเป้าหมาย (Analyze & Goal Setting)' },
@@ -2805,13 +2838,7 @@ export default function AdminDashboard({
                 const sup = supervisions.find(s => s.teacherId === selectedPlcLogDetail.teacherId && s.academicYear === selectedPlcLogDetail.academicYear);
                 const detailImages = [];
                 if (Number(selectedPlcLogDetail.cycle) === 3) {
-                  if (sup && sup.evaluations) {
-                    Object.values(sup.evaluations).forEach(ev => {
-                      if (ev.images && Array.isArray(ev.images)) {
-                        detailImages.push(...ev.images);
-                      }
-                    });
-                  }
+                  detailImages.push(...evaluationImagesFor(sup));
                 } else {
                   if (selectedPlcLogDetail.images) {
                     detailImages.push(...selectedPlcLogDetail.images);

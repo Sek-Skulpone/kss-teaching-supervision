@@ -21,6 +21,7 @@ import EvaluationModal from './components/EvaluationModal';
 import EvaluationSummaryModal from './components/EvaluationSummaryModal';
 import { formatThaiDateFull } from './utils/thaiDate';
 import { getStatusLabel } from './utils/statusLabels';
+import { todayDateString } from './utils/localDate';
 import AvatarEditorModal from './components/AvatarEditorModal';
 import {
   getUsers,
@@ -1159,7 +1160,7 @@ export default function App() {
                 {/* Evaluation Form & Report Summary Actions */}
                 {((selectedEvent.supervisors && selectedEvent.supervisors.some(s => s.id === currentUser.id)) || currentUser.role === 'admin') && 
                  (selectedEvent.status === 'approved' || selectedEvent.status === 'completed') && 
-                 (!selectedEvent.date || selectedEvent.date <= new Date().toISOString().split('T')[0]) && (
+                 (!selectedEvent.date || selectedEvent.date <= todayDateString()) && (
                   <div style={{ marginTop: '1rem', borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
                     <button
                       className="btn btn-secondary"
