@@ -4,6 +4,31 @@ import { formatThaiDate } from '../utils/thaiDate';
 
 export default function EvaluationSummaryModal({ supervision, onClose }) {
   const [activeLightboxImage, setActiveLightboxImage] = useState(null);
+  // 'average' shows the committee-wide averages; otherwise holds the
+  // supervisorId whose individual scoring is being viewed.
+  const [activeView, setActiveView] = useState('average');
+
+  // Per-item scoring for a single committee member, plus that member's own
+  // overall average across the items they marked as practised.
+  const getIndividualEvalData = (ev) => {
+    const itemStats = {};
+    let sum = 0;
+    let count = 0;
+    OBSERVATION_ITEMS.forEach(item => {
+      const r = ev.ratings?.[item.id];
+      const practice = r?.practice === 'มี' ? 'มี' : 'ไม่มี';
+      const score = practice === 'มี' ? (r?.score || 0) : null;
+      itemStats[item.id] = { practice, score };
+      if (practice === 'มี') {
+        sum += score;
+        count++;
+      }
+    });
+    return {
+      itemStats,
+      overall: count > 0 ? (sum / count).toFixed(2) : '-'
+    };
+  };
 
   const getAverageEvalData = (sup) => {
     if (!sup || !sup.evaluations || Object.keys(sup.evaluations).length === 0) {
@@ -80,78 +105,155 @@ export default function EvaluationSummaryModal({ supervision, onClose }) {
             </div>
           ) : (
             <>
-              {/* Overall Summary Score Card */}
-              <div style={{ display: 'grid', gridTemplateColumns: '140px 1fr', gap: '1rem', alignItems: 'center', backgroundColor: '#f0fdf4', padding: '1rem', borderRadius: 'var(--radius-md)', border: '1px solid #b2f5ea' }}>
-                <div style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--status-approved)' }}>คะแนนเฉลี่ยรวม</div>
-                  <div style={{ fontSize: '2.5rem', fontWeight: 800, color: 'var(--primary-color)', lineHeight: 1.1 }}>{avgData.overall}</div>
-                  <div style={{ fontSize: '11px', color: 'var(--text-medium)' }}>เต็ม 4.00 คะแนน</div>
+              {/* Switch between the committee average and each member's own scoring */}
+              <div>
+                <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-medium)', marginBottom: '0.4rem' }}>
+                  เลือกดูผลการประเมิน:
                 </div>
-                <div style={{ fontSize: '13px', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                  <div><strong>ระดับคุณภาพการจัดกิจกรรมการเรียนรู้:</strong></div>
-                  <div style={{ fontWeight: 700, fontSize: '15px', color: 'var(--primary-color)' }}>
-                    {avgData.overall === '-' ? '-' : 
-                     Number(avgData.overall) >= 3.50 ? 'ดีมาก (Excellent)' :
-                     Number(avgData.overall) >= 2.75 ? 'ดี (Good)' :
-                     Number(avgData.overall) >= 2.00 ? 'พอใช้ (Fair)' : 'ปรับปรุง (Need Improvement)'}
-                  </div>
-                  <div style={{ fontSize: '11.5px', color: 'var(--text-medium)', marginTop: '0.25rem', borderTop: '1px solid #d4f2e6', paddingTop: '0.25rem' }}>
-                    * คำนวณจากแบบประเมินของผู้นิเทศทั้งหมด {avgData.count} ท่าน (คำนวณเฉลี่ยเฉพาะข้อที่มีการปฏิบัติจริง)
-                  </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                  <button
+                    type="button"
+                    className={`btn ${activeView === 'average' ? 'btn-primary' : 'btn-outline'}`}
+                    style={{ padding: '0.35rem 0.8rem', fontSize: '12px' }}
+                    onClick={() => setActiveView('average')}
+                  >
+                    📊 ค่าเฉลี่ยรวม ({avgData.count} ท่าน)
+                  </button>
+                  {avgData.evalsList.map(ev => (
+                    <button
+                      key={ev.supervisorId}
+                      type="button"
+                      className={`btn ${activeView === ev.supervisorId ? 'btn-primary' : 'btn-outline'}`}
+                      style={{ padding: '0.35rem 0.8rem', fontSize: '12px' }}
+                      onClick={() => setActiveView(ev.supervisorId)}
+                    >
+                      ✍️ {ev.supervisorName}
+                    </button>
+                  ))}
                 </div>
               </div>
 
+              {/* Score Card — committee average, or the selected member's own */}
+              {(() => {
+                const activeEval = activeView === 'average'
+                  ? null
+                  : avgData.evalsList.find(ev => ev.supervisorId === activeView);
+                const individual = activeEval ? getIndividualEvalData(activeEval) : null;
+                const shownOverall = individual ? individual.overall : avgData.overall;
+
+                return (
+                  <div style={{ display: 'grid', gridTemplateColumns: '140px 1fr', gap: '1rem', alignItems: 'center', backgroundColor: '#f0fdf4', padding: '1rem', borderRadius: 'var(--radius-md)', border: '1px solid #b2f5ea' }}>
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--status-approved)' }}>
+                        {activeEval ? 'คะแนนของกรรมการท่านนี้' : 'คะแนนเฉลี่ยรวม'}
+                      </div>
+                      <div style={{ fontSize: '2.5rem', fontWeight: 800, color: 'var(--primary-color)', lineHeight: 1.1 }}>{shownOverall}</div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-medium)' }}>เต็ม 4.00 คะแนน</div>
+                    </div>
+                    <div style={{ fontSize: '13px', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      <div><strong>ระดับคุณภาพการจัดกิจกรรมการเรียนรู้:</strong></div>
+                      <div style={{ fontWeight: 700, fontSize: '15px', color: 'var(--primary-color)' }}>
+                        {shownOverall === '-' ? '-' :
+                         Number(shownOverall) >= 3.50 ? 'ดีมาก (Excellent)' :
+                         Number(shownOverall) >= 2.75 ? 'ดี (Good)' :
+                         Number(shownOverall) >= 2.00 ? 'พอใช้ (Fair)' : 'ปรับปรุง (Need Improvement)'}
+                      </div>
+                      <div style={{ fontSize: '11.5px', color: 'var(--text-medium)', marginTop: '0.25rem', borderTop: '1px solid #d4f2e6', paddingTop: '0.25rem' }}>
+                        {activeEval
+                          ? `* คะแนนจากแบบประเมินของ ${activeEval.supervisorName} เพียงท่านเดียว (เฉลี่ยเฉพาะข้อที่มีการปฏิบัติจริง)`
+                          : `* คำนวณจากแบบประเมินของผู้นิเทศทั้งหมด ${avgData.count} ท่าน (คำนวณเฉลี่ยเฉพาะข้อที่มีการปฏิบัติจริง)`}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
               {/* Detailed Scores Breakdown */}
-              <div>
-                <h4 style={{ fontWeight: 700, fontSize: '14px', color: 'var(--primary-color)', marginBottom: '0.5rem' }}>คะแนนเฉลี่ยรายข้อการสังเกตชั้นเรียน</h4>
-                <div style={{ border: '1px solid var(--border-color)', borderRadius: '4px', overflow: 'hidden' }}>
-                  <table style={{ margin: 0, width: '100%', fontSize: '12px' }}>
-                    <thead style={{ backgroundColor: '#f8f9fa' }}>
-                      <tr>
-                        <th style={{ padding: '0.5rem 0.4rem', textAlign: 'center', width: '50px' }}>ที่</th>
-                        <th style={{ padding: '0.5rem 0.4rem', textAlign: 'left' }}>รายการประเมิน</th>
-                        <th style={{ padding: '0.5rem 0.4rem', textAlign: 'center', width: '100px' }}>อัตราการปฏิบัติ</th>
-                        <th style={{ padding: '0.5rem 0.4rem', textAlign: 'center', width: '90px' }}>คะแนนเฉลี่ย</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {OBSERVATION_ITEMS.map((item) => {
-                        const isFirstGroupItem = item.id === '1_1';
-                        const stats = avgData.itemStats[item.id] || { practiceRate: '0', avgScore: '-' };
-                        
-                        return (
-                          <React.Fragment key={item.id}>
-                            {isFirstGroupItem && (
-                              <tr style={{ backgroundColor: '#f8fafc', fontWeight: 'bold' }}>
-                                <td style={{ padding: '0.4rem', textAlign: 'center' }}>1</td>
-                                <td style={{ padding: '0.4rem' }} colSpan={3}>{item.group}</td>
-                              </tr>
-                            )}
-                            <tr style={{ borderBottom: '1px solid #e2e8f0' }}>
-                              <td style={{ padding: '0.4rem', textAlign: 'center', fontWeight: 500, color: 'var(--text-medium)' }}>{item.no}</td>
-                              <td style={{ padding: '0.4rem', paddingLeft: item.group ? '1.5rem' : '0.4rem', color: 'var(--text-dark)' }}>{item.label}</td>
-                              <td style={{ padding: '0.4rem', textAlign: 'center', color: stats.practiceRate === '100' ? '#27ae60' : '#e67e22', fontWeight: 600 }}>
-                                {stats.practiceRate}%
-                              </td>
-                              <td style={{ padding: '0.4rem', textAlign: 'center', fontWeight: 700, color: stats.avgScore !== '-' ? 'var(--primary-color)' : 'var(--text-light)' }}>
-                                {stats.avgScore}
-                              </td>
-                            </tr>
-                          </React.Fragment>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+              {(() => {
+                const activeEval = activeView === 'average'
+                  ? null
+                  : avgData.evalsList.find(ev => ev.supervisorId === activeView);
+                const individual = activeEval ? getIndividualEvalData(activeEval) : null;
+
+                return (
+                  <div>
+                    <h4 style={{ fontWeight: 700, fontSize: '14px', color: 'var(--primary-color)', marginBottom: '0.5rem' }}>
+                      {activeEval
+                        ? `คะแนนรายข้อของ ${activeEval.supervisorName}`
+                        : 'คะแนนเฉลี่ยรายข้อการสังเกตชั้นเรียน'}
+                    </h4>
+                    <div style={{ border: '1px solid var(--border-color)', borderRadius: '4px', overflow: 'hidden' }}>
+                      <table style={{ margin: 0, width: '100%', fontSize: '12px' }}>
+                        <thead style={{ backgroundColor: '#f8f9fa' }}>
+                          <tr>
+                            <th style={{ padding: '0.5rem 0.4rem', textAlign: 'center', width: '50px' }}>ที่</th>
+                            <th style={{ padding: '0.5rem 0.4rem', textAlign: 'left' }}>รายการประเมิน</th>
+                            <th style={{ padding: '0.5rem 0.4rem', textAlign: 'center', width: '100px' }}>
+                              {activeEval ? 'การปฏิบัติ' : 'อัตราการปฏิบัติ'}
+                            </th>
+                            <th style={{ padding: '0.5rem 0.4rem', textAlign: 'center', width: '90px' }}>
+                              {activeEval ? 'คะแนน' : 'คะแนนเฉลี่ย'}
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {OBSERVATION_ITEMS.map((item) => {
+                            const isFirstGroupItem = item.id === '1_1';
+                            const stats = avgData.itemStats[item.id] || { practiceRate: '0', avgScore: '-' };
+                            const own = individual ? individual.itemStats[item.id] : null;
+
+                            return (
+                              <React.Fragment key={item.id}>
+                                {isFirstGroupItem && (
+                                  <tr style={{ backgroundColor: '#f8fafc', fontWeight: 'bold' }}>
+                                    <td style={{ padding: '0.4rem', textAlign: 'center' }}>1</td>
+                                    <td style={{ padding: '0.4rem' }} colSpan={3}>{item.group}</td>
+                                  </tr>
+                                )}
+                                <tr style={{ borderBottom: '1px solid #e2e8f0' }}>
+                                  <td style={{ padding: '0.4rem', textAlign: 'center', fontWeight: 500, color: 'var(--text-medium)' }}>{item.no}</td>
+                                  <td style={{ padding: '0.4rem', paddingLeft: item.group ? '1.5rem' : '0.4rem', color: 'var(--text-dark)' }}>{item.label}</td>
+                                  {own ? (
+                                    <>
+                                      <td style={{ padding: '0.4rem', textAlign: 'center', fontWeight: 600, color: own.practice === 'มี' ? '#27ae60' : '#e67e22' }}>
+                                        {own.practice === 'มี' ? '✔ มี' : '✖ ไม่มี'}
+                                      </td>
+                                      <td style={{ padding: '0.4rem', textAlign: 'center', fontWeight: 700, color: own.score !== null ? 'var(--primary-color)' : 'var(--text-light)' }}>
+                                        {own.score !== null ? own.score.toFixed(2) : '-'}
+                                      </td>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <td style={{ padding: '0.4rem', textAlign: 'center', color: stats.practiceRate === '100' ? '#27ae60' : '#e67e22', fontWeight: 600 }}>
+                                        {stats.practiceRate}%
+                                      </td>
+                                      <td style={{ padding: '0.4rem', textAlign: 'center', fontWeight: 700, color: stats.avgScore !== '-' ? 'var(--primary-color)' : 'var(--text-light)' }}>
+                                        {stats.avgScore}
+                                      </td>
+                                    </>
+                                  )}
+                                </tr>
+                              </React.Fragment>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Qualitative Comments & Suggestions */}
               <div>
                 <h4 style={{ fontWeight: 700, fontSize: '14px', color: 'var(--primary-color)', marginBottom: '0.5rem' }}>
-                  ข้อเสนอแนะของคณะกรรมการนิเทศ
+                  {activeView === 'average'
+                    ? 'ข้อเสนอแนะของคณะกรรมการนิเทศ (ทุกท่าน)'
+                    : 'ข้อเสนอแนะของกรรมการท่านนี้'}
                 </h4>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                  {avgData.evalsList.map((ev) => (
+                  {avgData.evalsList
+                    .filter(ev => activeView === 'average' || ev.supervisorId === activeView)
+                    .map((ev) => (
                     <div key={ev.supervisorId} style={{ backgroundColor: '#fafafa', border: '1px solid #eee', padding: '0.75rem', borderRadius: '4px', fontSize: '13px' }}>
                       <div style={{ fontWeight: 700, color: 'var(--primary-color)', borderBottom: '1px dashed #e2e8f0', paddingBottom: '0.25rem', marginBottom: '0.4rem' }}>
                         ✍️ ผู้นิเทศ: {ev.supervisorName}
