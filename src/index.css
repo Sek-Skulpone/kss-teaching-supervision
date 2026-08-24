@@ -639,6 +639,153 @@ textarea:focus {
   background-color: var(--status-completed);
 }
 
+/* --- Mobile calendar: compact dots + full-width day list ---
+   Both are hidden on wide screens, where the normal grid with inline event
+   chips is readable. The @media block near the bottom of this file swaps
+   them in on phones. */
+.calendar-event-dots {
+  display: none;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-top: 2px;
+}
+
+.calendar-event-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.calendar-event-dot.status-pending { background-color: #7f8c8d; }
+.calendar-event-dot.status-pending_approval { background-color: var(--secondary-hover); }
+.calendar-event-dot.status-approved { background-color: var(--status-approved); }
+.calendar-event-dot.status-completed { background-color: var(--status-completed); }
+
+.calendar-agenda {
+  display: none;
+  margin-top: 1.5rem;
+  border-top: 1px solid var(--border-color);
+  padding-top: 1rem;
+}
+
+.calendar-agenda-title {
+  font-size: var(--font-sm);
+  font-weight: 700;
+  color: var(--primary-color);
+  margin-bottom: 0.75rem;
+}
+
+.calendar-agenda-empty {
+  text-align: center;
+  padding: 1.5rem 1rem;
+  border: 1px dashed var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-light);
+  font-size: var(--font-sm);
+}
+
+.calendar-agenda-day {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.calendar-agenda-day:last-child {
+  border-bottom: none;
+}
+
+.calendar-agenda-date {
+  flex-shrink: 0;
+  width: 46px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+
+.calendar-agenda-daynum {
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: var(--primary-color);
+  line-height: 1.1;
+}
+
+.calendar-agenda-dayname {
+  font-size: var(--font-xs);
+  color: var(--text-medium);
+}
+
+.calendar-agenda-day.today .calendar-agenda-daynum {
+  background-color: var(--secondary-color);
+  color: var(--primary-color);
+  border-radius: 50%;
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.05rem;
+}
+
+.calendar-agenda-today-tag {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--secondary-hover);
+}
+
+.calendar-agenda-events {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.calendar-agenda-event {
+  width: 100%;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--border-color);
+  border-left: 4px solid var(--text-light);
+  border-radius: var(--radius-sm);
+  background-color: var(--card-bg);
+  cursor: pointer;
+  font-family: inherit;
+  transition: var(--transition);
+}
+
+.calendar-agenda-event:hover,
+.calendar-agenda-event:focus-visible {
+  background-color: #fafbfc;
+  box-shadow: var(--shadow-sm);
+}
+
+.calendar-agenda-event.status-pending { border-left-color: #7f8c8d; }
+.calendar-agenda-event.status-pending_approval { border-left-color: var(--secondary-hover); }
+.calendar-agenda-event.status-approved { border-left-color: var(--status-approved); }
+.calendar-agenda-event.status-completed { border-left-color: var(--status-completed); }
+
+.calendar-agenda-event-time {
+  font-size: var(--font-sm);
+  font-weight: 700;
+  color: var(--text-dark);
+}
+
+.calendar-agenda-event-subject {
+  font-size: var(--font-sm);
+  color: var(--text-dark);
+}
+
+.calendar-agenda-event-teacher {
+  font-size: var(--font-xs);
+  color: var(--text-medium);
+}
+
 /* --- Alert / Notification Banner --- */
 .notification-banner {
   background-color: var(--secondary-light);
@@ -937,17 +1084,41 @@ tr:hover td {
     justify-content: space-between;
   }
   
+  /* Grid becomes a compact month overview: date + coloured dots only. The
+     readable per-day detail moves to .calendar-agenda below it, because a
+     7-column grid leaves each cell far too narrow for event text here. */
   .calendar-day-cell {
-    min-height: 80px;
+    min-height: 46px;
+    padding: 0.3rem 0.2rem;
+    align-items: center;
   }
 
   .calendar-day-number {
     font-size: var(--font-xs);
+    align-self: center;
+    margin-bottom: 0;
   }
 
-  .calendar-event {
-    font-size: 9px;
-    padding: 2px 4px;
+  .calendar-events-container {
+    display: none;
+  }
+
+  .calendar-event-dots {
+    display: flex;
+    justify-content: center;
+  }
+
+  .calendar-agenda {
+    display: block;
+  }
+
+  .calendar-day-header {
+    padding: 0.5rem 0.15rem;
+    font-size: var(--font-xs);
+  }
+
+  .calendar-grid {
+    gap: 3px;
   }
   
   .dashboard-main {

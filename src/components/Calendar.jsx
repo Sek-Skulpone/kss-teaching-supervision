@@ -77,6 +77,25 @@ export default function Calendar({ supervisions, onEventClick }) {
     return supervisions.filter(s => s.date === dateString);
   };
 
+  const statusClassFor = (status) => {
+    if (status === 'pending') return 'status-pending';
+    if (status === 'pending_approval') return 'status-pending_approval';
+    if (status === 'approved') return 'status-approved';
+    if (status === 'completed') return 'status-completed';
+    return 'status-pending';
+  };
+
+  // Days of THIS month that actually have supervisions, used to drive the
+  // full-width day-by-day list shown on narrow screens. In a 7-column grid on
+  // a phone each cell is only ~50px wide, which is far too narrow to read a
+  // period label like "คาบที่ 2 (09.20 - 10.10 น.)" -- so on mobile the grid
+  // degrades to date + coloured dots for the month overview, and the real
+  // detail is read from this list instead.
+  const daysWithEvents = daysArray
+    .filter(cell => cell.monthOffset === 0)
+    .map(cell => ({ ...cell, events: getSupervisionsForDate(cell.dateString) }))
+    .filter(cell => cell.events.length > 0);
+
   return (
     <div className="card">
       <div className="calendar-container">
@@ -137,13 +156,19 @@ export default function Calendar({ supervisions, onEventClick }) {
             return (
               <div key={idx} className={classes}>
                 <div className="calendar-day-number">{cell.day}</div>
+
+                {/* Compact indicator shown instead of the text chips on phones */}
+                {dayEvents.length > 0 && (
+                  <div className="calendar-event-dots" aria-hidden="true">
+                    {dayEvents.map(event => (
+                      <span key={event.id} className={`calendar-event-dot ${statusClassFor(event.status)}`} />
+                    ))}
+                  </div>
+                )}
+
                 <div className="calendar-events-container">
                   {dayEvents.map(event => {
-                    let eventClass = 'calendar-event ';
-                    if (event.status === 'pending') eventClass += 'status-pending';
-                    else if (event.status === 'pending_approval') eventClass += 'status-pending_approval';
-                    else if (event.status === 'approved') eventClass += 'status-approved';
-                    else if (event.status === 'completed') eventClass += 'status-completed';
+                    const eventClass = `calendar-event ${statusClassFor(event.status)}`;
 
                     return (
                       <div
@@ -168,6 +193,48 @@ export default function Calendar({ supervisions, onEventClick }) {
               </div>
             );
           })}
+        </div>
+
+        {/* Day-by-day detail list (phones only -- see daysWithEvents above) */}
+        <div className="calendar-agenda">
+          <h4 className="calendar-agenda-title">
+            รายละเอียดการนิเทศเดือน{MONTHS_TH[month]} พ.ศ. {year + 543}
+          </h4>
+
+          {daysWithEvents.length === 0 ? (
+            <div className="calendar-agenda-empty">
+              เดือนนี้ยังไม่มีตารางการนิเทศที่ระบุวันไว้ในระบบ
+            </div>
+          ) : (
+            daysWithEvents.map(cell => (
+              <div key={cell.dateString} className={`calendar-agenda-day ${isToday(cell.dateString) ? 'today' : ''}`}>
+                <div className="calendar-agenda-date">
+                  <span className="calendar-agenda-daynum">{cell.day}</span>
+                  <span className="calendar-agenda-dayname">
+                    {DAYS_TH[new Date(cell.dateString + 'T00:00:00').getDay()]}
+                  </span>
+                  {isToday(cell.dateString) && <span className="calendar-agenda-today-tag">วันนี้</span>}
+                </div>
+
+                <div className="calendar-agenda-events">
+                  {cell.events.map(event => (
+                    <button
+                      key={event.id}
+                      type="button"
+                      className={`calendar-agenda-event ${statusClassFor(event.status)}`}
+                      onClick={() => onEventClick(event)}
+                    >
+                      <span className="calendar-agenda-event-time">{event.time}</span>
+                      <span className="calendar-agenda-event-subject">{event.subject}</span>
+                      <span className="calendar-agenda-event-teacher">
+                        ครูผู้รับการนิเทศ: {event.teacherName}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </div>
     </div>
