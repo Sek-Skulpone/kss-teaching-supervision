@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { AlertCircle, CheckCircle2, UserCheck, Eye, ClipboardList, Trash2, Users, UserPlus, Shield, RotateCw, Edit } from 'lucide-react';
+import { AlertCircle, CheckCircle2, UserCheck, Eye, ClipboardList, Trash2, Users, UserPlus, Shield, RotateCw, Edit, CalendarPlus } from 'lucide-react';
 import EvaluationModal from './EvaluationModal';
 import EvaluationSummaryModal from './EvaluationSummaryModal';
 import AvatarEditorModal from './AvatarEditorModal';
@@ -29,6 +29,8 @@ export default function AdminDashboard({
   onUpdateTeacher,
   onUpdateSupervision,
   onDeleteSupervision,
+  onAddSupervision,
+  onSubmitEvaluation,
   settings = { positions: [], departments: [] },
   termPlans = [],
   onUpdateSettings,
@@ -72,6 +74,20 @@ export default function AdminDashboard({
   // Form states for editing teacher
   const [editingTeacher, setEditingTeacher] = useState(null);
   const [showTeacherAvatarEditor, setShowTeacherAvatarEditor] = useState(false);
+
+  // Admin-initiated supervision scheduling (for teachers who haven't
+  // submitted a request themselves).
+  const [showCreateSupervision, setShowCreateSupervision] = useState(false);
+  const [createTeacherId, setCreateTeacherId] = useState('');
+  const [createSubject, setCreateSubject] = useState('');
+  const [createGrade, setCreateGrade] = useState('ม.1');
+  const [createRoom, setCreateRoom] = useState('1');
+  const [createLocation, setCreateLocation] = useState('');
+  const [createDate, setCreateDate] = useState('');
+  const [createTime, setCreateTime] = useState('');
+  const [createLessonPlanUrl, setCreateLessonPlanUrl] = useState('');
+  const [createError, setCreateError] = useState('');
+  const [isCreatingSupervision, setIsCreatingSupervision] = useState(false);
   const [editName, setEditName] = useState('');
   const [editPosition, setEditPosition] = useState('');
   const [editDepartment, setEditDepartment] = useState('');
@@ -291,6 +307,71 @@ export default function AdminDashboard({
       setEditingTeacher(null);
     } else {
       setEditError('เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง');
+    }
+  };
+
+  const resetCreateSupervisionForm = () => {
+    setCreateTeacherId('');
+    setCreateSubject('');
+    setCreateGrade('ม.1');
+    setCreateRoom('1');
+    setCreateLocation('');
+    setCreateDate('');
+    setCreateTime('');
+    setCreateLessonPlanUrl('');
+    setCreateError('');
+  };
+
+  // Lets the academic department schedule a supervision for a teacher who
+  // never submitted a request of their own. Date/time are optional here so a
+  // slot can be created first and scheduled later via the existing
+  // "ระบุเวลา" flow, same as a teacher-submitted request.
+  const handleCreateSupervisionSubmit = async (e) => {
+    e.preventDefault();
+    setCreateError('');
+
+    const teacher = teachers.find(t => t.id === createTeacherId);
+    if (!teacher) {
+      setCreateError('กรุณาเลือกครูผู้รับการนิเทศ');
+      return;
+    }
+    if (!createSubject.trim()) {
+      setCreateError('กรุณาระบุรายวิชา');
+      return;
+    }
+    if (createDate && !createTime) {
+      setCreateError('เมื่อระบุวันที่แล้ว กรุณาเลือกคาบเวลาด้วย');
+      return;
+    }
+
+    setIsCreatingSupervision(true);
+    try {
+      const added = await onAddSupervision({
+        teacherId: teacher.id,
+        teacherName: teacher.name,
+        subject: createSubject.trim(),
+        grade: createGrade,
+        room: createRoom,
+        location: createLocation.trim(),
+        date: createDate,
+        time: createTime,
+        lessonPlanUrl: createLessonPlanUrl.trim(),
+        academicYear: selectedSupervisionYear,
+        createdByAdmin: true
+      });
+
+      if (added) {
+        alert('สร้างตารางนิเทศเรียบร้อยแล้ว');
+        setShowCreateSupervision(false);
+        resetCreateSupervisionForm();
+      } else {
+        setCreateError('เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง');
+      }
+    } catch (err) {
+      console.error('Error creating supervision:', err);
+      setCreateError('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์ กรุณาลองใหม่อีกครั้ง');
+    } finally {
+      setIsCreatingSupervision(false);
     }
   };
 
@@ -689,8 +770,8 @@ export default function AdminDashboard({
 
       {activeSubTab === 'supervisions' && (
         <div>
-          {/* Academic Year Filter */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
+          {/* Academic Year Filter + admin-initiated scheduling */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
             <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-medium)' }}>ปีการศึกษา:</span>
             <select
               value={selectedSupervisionYear}
@@ -701,6 +782,16 @@ export default function AdminDashboard({
                 <option key={y} value={y}>{y}</option>
               ))}
             </select>
+
+            <button
+              type="button"
+              className="btn btn-primary"
+              style={{ padding: '0.4rem 0.9rem', fontSize: '13px', marginLeft: 'auto' }}
+              onClick={() => { resetCreateSupervisionForm(); setShowCreateSupervision(true); }}
+            >
+              <CalendarPlus size={14} />
+              กำหนดตารางนิเทศเอง
+            </button>
           </div>
 
           {/* 1. Daily Notification / Reminder */}
@@ -1603,6 +1694,129 @@ export default function AdminDashboard({
         </div>
       )}
 
+      {/* Admin-initiated supervision scheduling */}
+      {showCreateSupervision && (
+        <div className="modal-overlay" onClick={() => setShowCreateSupervision(false)}>
+          <div className="modal-content" style={{ maxWidth: '520px' }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>📅 กำหนดตารางนิเทศเอง</h3>
+              <button className="modal-close-btn" aria-label="ปิดหน้าต่าง" onClick={() => setShowCreateSupervision(false)}>×</button>
+            </div>
+            <form onSubmit={handleCreateSupervisionSubmit}>
+              <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                {createError && (
+                  <div style={{ backgroundColor: '#fde8e8', color: '#e74c3c', padding: '0.75rem', borderRadius: 'var(--radius-sm)', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                    <AlertCircle size={14} />
+                    {createError}
+                  </div>
+                )}
+
+                <div style={{ backgroundColor: 'var(--secondary-light)', border: '1px dashed var(--secondary-color)', padding: '0.6rem 0.75rem', borderRadius: 'var(--radius-sm)', fontSize: '12px', color: '#7d6608' }}>
+                  ใช้สำหรับกรณีที่คุณครูยังไม่ได้ยื่นขอรับการนิเทศเข้ามาในระบบ
+                  โดยฝ่ายวิชาการสามารถสร้างรายการนิเทศแทนได้ และแต่งตั้งคณะกรรมการภายหลัง
+                </div>
+
+                <div className="form-group">
+                  <label style={{ fontWeight: 600, display: 'block', marginBottom: '0.25rem' }}>ครูผู้รับการนิเทศ</label>
+                  <select
+                    value={createTeacherId}
+                    onChange={(e) => setCreateTeacherId(e.target.value)}
+                    style={{ width: '100%', padding: '0.5rem' }}
+                    required
+                  >
+                    <option value="">-- เลือกครูผู้รับการนิเทศ --</option>
+                    {teachers.map(t => (
+                      <option key={t.id} value={t.id}>{t.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label style={{ fontWeight: 600, display: 'block', marginBottom: '0.25rem' }}>รายวิชาที่จัดการเรียนรู้</label>
+                  <input
+                    type="text"
+                    value={createSubject}
+                    onChange={(e) => setCreateSubject(e.target.value)}
+                    placeholder="ตัวอย่าง: คณิตศาสตร์ ค21101"
+                    style={{ width: '100%', padding: '0.5rem' }}
+                    required
+                  />
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                  <div className="form-group">
+                    <label style={{ fontWeight: 600, display: 'block', marginBottom: '0.25rem' }}>ระดับชั้นเรียน</label>
+                    <select value={createGrade} onChange={(e) => setCreateGrade(e.target.value)} style={{ width: '100%', padding: '0.5rem' }}>
+                      <option value="ม.1">มัธยมศึกษาปีที่ 1</option>
+                      <option value="ม.2">มัธยมศึกษาปีที่ 2</option>
+                      <option value="ม.3">มัธยมศึกษาปีที่ 3</option>
+                      <option value="ม.4">มัธยมศึกษาปีที่ 4</option>
+                      <option value="ม.5">มัธยมศึกษาปีที่ 5</option>
+                      <option value="ม.6">มัธยมศึกษาปีที่ 6</option>
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label style={{ fontWeight: 600, display: 'block', marginBottom: '0.25rem' }}>ห้องเรียน</label>
+                    <select value={createRoom} onChange={(e) => setCreateRoom(e.target.value)} style={{ width: '100%', padding: '0.5rem' }}>
+                      {['1','2','3','4','5','6','7','8','9','10'].map(r => (
+                        <option key={r} value={r}>{r}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                  <div className="form-group">
+                    <label style={{ fontWeight: 600, display: 'block', marginBottom: '0.25rem' }}>วันที่นิเทศ (ไม่บังคับ)</label>
+                    <input
+                      type="date"
+                      value={createDate}
+                      onChange={(e) => setCreateDate(e.target.value)}
+                      style={{ width: '100%', padding: '0.5rem' }}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label style={{ fontWeight: 600, display: 'block', marginBottom: '0.25rem' }}>คาบเวลาเรียน</label>
+                    <select value={createTime} onChange={(e) => setCreateTime(e.target.value)} style={{ width: '100%', padding: '0.5rem' }}>
+                      <option value="">-- ยังไม่ระบุ --</option>
+                      {PERIODS_LIST.map(p => <option key={p} value={p}>{p}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label style={{ fontWeight: 600, display: 'block', marginBottom: '0.25rem' }}>สถานที่จัดการเรียนรู้ (ไม่บังคับ)</label>
+                  <input
+                    type="text"
+                    value={createLocation}
+                    onChange={(e) => setCreateLocation(e.target.value)}
+                    placeholder="ตัวอย่าง: อาคาร 2 ห้อง 214"
+                    style={{ width: '100%', padding: '0.5rem' }}
+                  />
+                </div>
+
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label style={{ fontWeight: 600, display: 'block', marginBottom: '0.25rem' }}>ลิงก์แผนการสอน (ไม่บังคับ)</label>
+                  <input
+                    type="text"
+                    value={createLessonPlanUrl}
+                    onChange={(e) => setCreateLessonPlanUrl(e.target.value)}
+                    placeholder="วางลิงก์ Google Drive หรือไฟล์แผนการสอน"
+                    style={{ width: '100%', padding: '0.5rem' }}
+                  />
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-outline" onClick={() => setShowCreateSupervision(false)}>ยกเลิก</button>
+                <button type="submit" className="btn btn-primary" disabled={isCreatingSupervision}>
+                  {isCreatingSupervision ? 'กำลังบันทึก...' : 'สร้างตารางนิเทศ'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Edit Teacher Profile Modal */}
       {editingTeacher && (
         <div className="modal-overlay">
@@ -1980,10 +2194,8 @@ export default function AdminDashboard({
           supervision={selectedEvalSupervision}
           currentUser={currentUser}
           onClose={() => setSelectedEvalSupervision(null)}
-          onSubmit={async (newEvaluations) => {
-            const success = await onUpdateSupervision(selectedEvalSupervision.id, {
-              evaluations: newEvaluations
-            });
+          onSubmit={async (myEvaluation) => {
+            const success = await onSubmitEvaluation(selectedEvalSupervision.id, myEvaluation);
             if (success) {
               alert('บันทึกผลการประเมินนิเทศเรียบร้อยแล้ว!');
               setSelectedEvalSupervision(null);

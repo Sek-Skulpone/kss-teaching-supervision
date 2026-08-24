@@ -36,6 +36,7 @@ import {
   assignSupervisor,
   removeSupervisor,
   submitPostTeachingRecord,
+  submitEvaluation,
   getTermPlans,
   addTermPlan,
   updateTermPlan,
@@ -404,6 +405,23 @@ export default function App() {
     } catch (e) {
       console.error(e);
       return null;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSubmitEvaluation = async (supervisionId, myEvaluation) => {
+    setIsLoading(true);
+    try {
+      const success = await submitEvaluation(supervisionId, currentUser.id, myEvaluation);
+      if (success) {
+        await refreshSupervisionData();
+        return true;
+      }
+      return false;
+    } catch (e) {
+      console.error(e);
+      return false;
     } finally {
       setIsLoading(false);
     }
@@ -960,6 +978,8 @@ export default function App() {
                 onDeleteTeacher={handleDeleteTeacher}
                 onUpdateSupervision={handleUpdateSupervision}
                 onDeleteSupervision={handleDeleteSupervision}
+                onAddSupervision={handleAddSupervision}
+                onSubmitEvaluation={handleSubmitEvaluation}
                 settings={settings}
                 onUpdateSettings={handleUpdateSettings}
                 onUpdateTeacherPlc={handleUpdateTeacherPlc}
@@ -1258,10 +1278,8 @@ export default function App() {
           supervision={selectedEvalSupervision}
           currentUser={currentUser}
           onClose={() => setSelectedEvalSupervision(null)}
-          onSubmit={async (newEvaluations) => {
-            const success = await handleUpdateSupervision(selectedEvalSupervision.id, {
-              evaluations: newEvaluations
-            });
+          onSubmit={async (myEvaluation) => {
+            const success = await handleSubmitEvaluation(selectedEvalSupervision.id, myEvaluation);
             if (success) {
               alert('บันทึกผลการประเมินนิเทศเรียบร้อยแล้ว!');
               setSelectedEvalSupervision(null);

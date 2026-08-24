@@ -91,21 +91,21 @@ export default function EvaluationModal({ supervision, currentUser, onClose, onS
       };
     });
 
-    const newEvaluations = {
-      ...(supervision.evaluations || {}),
-      [currentUser.id]: {
-        supervisorId: currentUser.id,
-        supervisorName: currentUser.name,
-        submittedAt: new Date().toISOString(),
-        ratings: formattedRatings,
-        teacherBehavior: teacherBehavior.trim(),
-        teachingActivity: teachingActivity.trim(),
-        studentBehavior: studentBehavior.trim(),
-        images: images
-      }
-    };
-
-    onSubmit(newEvaluations);
+    // Submit only THIS supervisor's evaluation. Merging it with the other
+    // committee members' evaluations happens transactionally in db.js
+    // (submitEvaluation) against the latest server state -- doing it here
+    // from this component's snapshot would overwrite any evaluation another
+    // member submitted after this page was loaded.
+    onSubmit({
+      supervisorId: currentUser.id,
+      supervisorName: currentUser.name,
+      submittedAt: new Date().toISOString(),
+      ratings: formattedRatings,
+      teacherBehavior: teacherBehavior.trim(),
+      teachingActivity: teachingActivity.trim(),
+      studentBehavior: studentBehavior.trim(),
+      images: images
+    });
   };
 
   const handlePracticeChange = (itemId, practice) => {

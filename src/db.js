@@ -370,6 +370,26 @@ export const removeSupervisor = async (supervisionId, supervisorId) => {
   return matched && success;
 };
 
+// Records ONE supervisor's evaluation, merging it into whatever evaluations
+// already exist on the record.
+//
+// This must merge server-side, inside mutateCollection's Firestore
+// transaction, rather than having the caller send a pre-merged
+// `evaluations` object. Each committee member's browser holds a snapshot of
+// the supervision taken when their page last loaded; if two members evaluate
+// the same lesson, the second one to save would otherwise write back a
+// snapshot that predates the first member's submission and silently erase
+// it -- which is why supervisions with several committee members were only
+// ever showing a single evaluation.
+export const submitEvaluation = async (supervisionId, supervisorId, evaluation) => {
+  const { success } = await mutateCollection('supervisions', (list) =>
+    list.map(s => (s.id === supervisionId
+      ? { ...s, evaluations: { ...(s.evaluations || {}), [supervisorId]: evaluation } }
+      : s))
+  );
+  return success;
+};
+
 export const submitPostTeachingRecord = async (supervisionId, record) => {
   const fullRecord = {
     ...record,
