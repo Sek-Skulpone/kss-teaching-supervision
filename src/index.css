@@ -662,6 +662,52 @@ textarea:focus {
 .calendar-event-dot.status-approved { background-color: var(--status-approved); }
 .calendar-event-dot.status-completed { background-color: var(--status-completed); }
 
+.calendar-selected-day {
+  display: none;
+  margin-top: 1rem;
+  padding: 0.85rem;
+  border: 1px solid var(--primary-light);
+  border-left: 4px solid var(--primary-color);
+  border-radius: var(--radius-sm);
+  background-color: #fbfdfc;
+}
+
+.calendar-selected-day-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.6rem;
+}
+
+.calendar-selected-day-label {
+  font-size: var(--font-sm);
+  font-weight: 700;
+  color: var(--primary-color);
+}
+
+.calendar-selected-day-count {
+  font-size: var(--font-xs);
+  color: var(--text-medium);
+  white-space: nowrap;
+}
+
+.calendar-selected-day-empty {
+  font-size: var(--font-sm);
+  color: var(--text-light);
+  text-align: center;
+  padding: 0.9rem 0.5rem;
+  border: 1px dashed var(--border-color);
+  border-radius: var(--radius-sm);
+  background-color: var(--card-bg);
+}
+
+/* Tapping a day highlights it; the ring is only meaningful on phones where
+   the selected-day panel below is visible. */
+.calendar-day-cell.selected {
+  box-shadow: inset 0 0 0 2px var(--primary-color);
+}
+
 .calendar-agenda {
   display: none;
   margin-top: 1.5rem;
@@ -1108,8 +1154,16 @@ tr:hover td {
     justify-content: center;
   }
 
+  .calendar-selected-day {
+    display: block;
+  }
+
   .calendar-agenda {
     display: block;
+  }
+
+  .calendar-day-cell {
+    cursor: pointer;
   }
 
   .calendar-day-header {
