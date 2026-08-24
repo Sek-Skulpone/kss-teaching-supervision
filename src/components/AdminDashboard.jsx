@@ -31,6 +31,7 @@ export default function AdminDashboard({
   onDeleteSupervision,
   onAddSupervision,
   onSubmitEvaluation,
+  onDeleteEvaluation,
   settings = { positions: [], departments: [] },
   termPlans = [],
   onUpdateSettings,
@@ -2210,6 +2211,22 @@ export default function AdminDashboard({
         <EvaluationSummaryModal
           supervision={selectedSummarySupervision}
           onClose={() => setSelectedSummarySupervision(null)}
+          canDeleteEvaluations={currentUser.role === 'admin'}
+          onDeleteEvaluation={async (supervisionId, supervisorId) => {
+            const success = await onDeleteEvaluation(supervisionId, supervisorId);
+            if (success) {
+              // Apply the same removal to this modal's own copy. The
+              // `supervisions` prop hasn't re-rendered yet at this point, so
+              // reading it back here would show stale data.
+              setSelectedSummarySupervision(prev => {
+                if (!prev || prev.id !== supervisionId) return prev;
+                const remaining = { ...(prev.evaluations || {}) };
+                delete remaining[supervisorId];
+                return { ...prev, evaluations: remaining };
+              });
+            }
+            return success;
+          }}
         />
       )}
 
@@ -2598,10 +2615,10 @@ export default function AdminDashboard({
       {/* Modal: View Teacher PLC Full Report */}
       {selectedPlcTeacher && (
         <div className="modal-overlay">
-          <div className="modal-content" style={{ maxWidth: '750px', width: '90%' }}>
+          <div className="modal-content printable-report" style={{ maxWidth: '750px', width: '90%' }}>
             <div className="modal-header">
               <h3>รายงานกิจกรรม PLC เชิงลึก</h3>
-              <button className="modal-close-btn" aria-label="ปิดหน้าต่าง" onClick={() => setSelectedPlcTeacher(null)}>×</button>
+              <button className="modal-close-btn no-print" aria-label="ปิดหน้าต่าง" onClick={() => setSelectedPlcTeacher(null)}>×</button>
             </div>
             <div className="modal-body" style={{ maxHeight: '70vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
               <div style={{ backgroundColor: '#f8f9fa', padding: '0.8rem', borderRadius: 'var(--radius-sm)', fontSize: '13px', borderLeft: '4px solid var(--primary-color)' }}>
@@ -2727,6 +2744,9 @@ export default function AdminDashboard({
               </div>
             </div>
             <div className="modal-footer">
+              <button type="button" className="btn btn-outline" onClick={() => window.print()}>
+                🖨️ พิมพ์รายงาน
+              </button>
               <button className="btn btn-primary" onClick={() => setSelectedPlcTeacher(null)}>ปิดหน้าต่าง</button>
             </div>
           </div>

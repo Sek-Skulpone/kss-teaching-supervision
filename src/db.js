@@ -390,6 +390,21 @@ export const submitEvaluation = async (supervisionId, supervisorId, evaluation) 
   return success;
 };
 
+// Removes ONE supervisor's evaluation. Merged server-side inside the
+// transaction for the same reason submitEvaluation is (see above): deleting
+// via a client-held snapshot would resurrect or erase other members' entries.
+export const deleteEvaluation = async (supervisionId, supervisorId) => {
+  const { success } = await mutateCollection('supervisions', (list) =>
+    list.map(s => {
+      if (s.id !== supervisionId) return s;
+      const remaining = { ...(s.evaluations || {}) };
+      delete remaining[supervisorId];
+      return { ...s, evaluations: remaining };
+    })
+  );
+  return success;
+};
+
 export const submitPostTeachingRecord = async (supervisionId, record) => {
   const fullRecord = {
     ...record,

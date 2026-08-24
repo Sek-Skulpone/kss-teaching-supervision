@@ -2,11 +2,31 @@ import React, { useState } from 'react';
 import { OBSERVATION_ITEMS } from '../utils/observationItems';
 import { formatThaiDate } from '../utils/thaiDate';
 
-export default function EvaluationSummaryModal({ supervision, onClose }) {
+export default function EvaluationSummaryModal({ supervision, onClose, canDeleteEvaluations = false, onDeleteEvaluation }) {
   const [activeLightboxImage, setActiveLightboxImage] = useState(null);
   // 'average' shows the committee-wide averages; otherwise holds the
   // supervisorId whose individual scoring is being viewed.
   const [activeView, setActiveView] = useState('average');
+  const [deletingId, setDeletingId] = useState(null);
+
+  const handleDeleteEvaluation = async (ev) => {
+    if (!window.confirm(
+      `ต้องการลบผลการประเมินของ "${ev.supervisorName}" ใช่หรือไม่?\n\n` +
+      `ผลประเมินของกรรมการท่านอื่นจะยังคงอยู่ และค่าเฉลี่ยจะถูกคำนวณใหม่`
+    )) return;
+
+    setDeletingId(ev.supervisorId);
+    try {
+      const success = await onDeleteEvaluation(supervision.id, ev.supervisorId);
+      if (success) {
+        setActiveView('average');
+      } else {
+        alert('เกิดข้อผิดพลาดในการลบผลการประเมิน กรุณาลองใหม่อีกครั้ง');
+      }
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   // Per-item scoring for a single committee member, plus that member's own
   // overall average across the items they marked as practised.
@@ -79,7 +99,7 @@ export default function EvaluationSummaryModal({ supervision, onClose }) {
 
   return (
     <div className="modal-overlay">
-      <div className="modal-content" style={{ maxWidth: '750px', width: '90%' }}>
+      <div className="modal-content printable-report" style={{ maxWidth: '750px', width: '90%' }}>
         <div className="modal-header">
           <h3 style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
             <span>รายงานสรุปผลการนิเทศการเรียนการสอนรายบุคคล</span>
@@ -105,8 +125,10 @@ export default function EvaluationSummaryModal({ supervision, onClose }) {
             </div>
           ) : (
             <>
-              {/* Switch between the committee average and each member's own scoring */}
-              <div>
+              {/* Switch between the committee average and each member's own
+                  scoring. Screen-only: on paper the selected view is printed
+                  as-is, so the switcher itself is noise. */}
+              <div className="no-print">
                 <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-medium)', marginBottom: '0.4rem' }}>
                   เลือกดูผลการประเมิน:
                 </div>
@@ -131,6 +153,26 @@ export default function EvaluationSummaryModal({ supervision, onClose }) {
                     </button>
                   ))}
                 </div>
+
+                {/* Admin-only: remove one member's evaluation. Scoped to the
+                    member currently being viewed so it can't be mis-clicked. */}
+                {canDeleteEvaluations && activeView !== 'average' && (() => {
+                  const target = avgData.evalsList.find(ev => ev.supervisorId === activeView);
+                  if (!target) return null;
+                  return (
+                    <button
+                      type="button"
+                      className="btn btn-outline"
+                      style={{ marginTop: '0.5rem', padding: '0.3rem 0.7rem', fontSize: '11.5px', color: '#e74c3c', borderColor: '#e74c3c' }}
+                      onClick={() => handleDeleteEvaluation(target)}
+                      disabled={deletingId === target.supervisorId}
+                    >
+                      🗑️ {deletingId === target.supervisorId
+                        ? 'กำลังลบ...'
+                        : `ลบผลการประเมินของ ${target.supervisorName}`}
+                    </button>
+                  );
+                })()}
               </div>
 
               {/* Score Card — committee average, or the selected member's own */}
@@ -280,52 +322,6 @@ export default function EvaluationSummaryModal({ supervision, onClose }) {
                         </div>
                       </div>
 
-                      {ev.images && ev.images.length > 0 && (
-                        <div style={{ marginTop: '0.75rem', borderTop: '1px dashed #e2e8f0', paddingTop: '0.5rem' }}>
-                          <strong style={{ display: 'block', marginBottom: '0.4rem' }}>📷 ภาพประกอบการนิเทศ:</strong>
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', gap: '8px' }}>
-                            {ev.images.map((imgUrl, imgIdx) => (
-                              <div
-                                key={imgIdx}
-                                role="button"
-                                tabIndex={0}
-                                aria-label={`ดูรูปภาพประกอบการนิเทศ ${imgIdx + 1}`}
-                                onClick={() => setActiveLightboxImage(imgUrl)}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter' || e.key === ' ') {
-                                    e.preventDefault();
-                                    setActiveLightboxImage(imgUrl);
-                                  }
-                                }}
-                                style={{
-                                  position: 'relative',
-                                  width: '100%',
-                                  aspectRatio: '4/3',
-                                  borderRadius: '4px',
-                                  overflow: 'hidden',
-                                  border: '1px solid #cbd5e1',
-                                  cursor: 'pointer',
-                                  transition: 'transform 0.2s, box-shadow 0.2s',
-                                }}
-                                onMouseEnter={(e) => {
-                                  e.currentTarget.style.transform = 'scale(1.05)';
-                                  e.currentTarget.style.boxShadow = '0 4px 8px rgba(0,0,0,0.15)';
-                                }}
-                                onMouseLeave={(e) => {
-                                  e.currentTarget.style.transform = 'none';
-                                  e.currentTarget.style.boxShadow = 'none';
-                                }}
-                              >
-                                <img 
-                                  src={imgUrl} 
-                                  alt={`Supervision photo ${imgIdx + 1}`} 
-                                  style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
-                                />
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
                     </div>
                   ))}
                 </div>
@@ -346,8 +342,79 @@ export default function EvaluationSummaryModal({ supervision, onClose }) {
               </div>
             </div>
           )}
+
+          {/* Supervision photos — kept at the very end of the report, grouped
+              by the supervisor who submitted them. Follows the same
+              average/individual scoping as the rest of the report. */}
+          {avgData && (() => {
+            const shown = avgData.evalsList
+              .filter(ev => activeView === 'average' || ev.supervisorId === activeView)
+              .filter(ev => ev.images && ev.images.length > 0);
+            if (shown.length === 0) return null;
+
+            return (
+              <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1rem', marginTop: '0.5rem' }}>
+                <h4 style={{ fontWeight: 700, fontSize: '14px', color: 'var(--primary-color)', marginBottom: '0.75rem' }}>
+                  📷 ภาพประกอบการนิเทศ
+                </h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  {shown.map(ev => (
+                    <div key={ev.supervisorId} className="print-keep-together">
+                      <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-medium)', marginBottom: '0.4rem' }}>
+                        โดย {ev.supervisorName}
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: '8px' }}>
+                        {ev.images.map((imgUrl, imgIdx) => (
+                          <div
+                            key={imgIdx}
+                            role="button"
+                            tabIndex={0}
+                            aria-label={`ดูรูปภาพประกอบการนิเทศของ ${ev.supervisorName} รูปที่ ${imgIdx + 1}`}
+                            onClick={() => setActiveLightboxImage(imgUrl)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                setActiveLightboxImage(imgUrl);
+                              }
+                            }}
+                            style={{
+                              position: 'relative',
+                              width: '100%',
+                              aspectRatio: '4/3',
+                              borderRadius: '4px',
+                              overflow: 'hidden',
+                              border: '1px solid #cbd5e1',
+                              cursor: 'pointer',
+                              transition: 'transform 0.2s, box-shadow 0.2s'
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.transform = 'scale(1.05)';
+                              e.currentTarget.style.boxShadow = '0 4px 8px rgba(0,0,0,0.15)';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.transform = 'none';
+                              e.currentTarget.style.boxShadow = 'none';
+                            }}
+                          >
+                            <img
+                              src={imgUrl}
+                              alt={`ภาพประกอบการนิเทศโดย ${ev.supervisorName} รูปที่ ${imgIdx + 1}`}
+                              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
         </div>
         <div className="modal-footer">
+          <button type="button" className="btn btn-outline" onClick={() => window.print()}>
+            🖨️ พิมพ์รายงาน
+          </button>
           <button type="button" className="btn btn-primary" onClick={onClose}>ปิดหน้าต่าง</button>
         </div>
       </div>

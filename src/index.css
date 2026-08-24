@@ -1205,3 +1205,73 @@ tr:hover td {
     grid-template-columns: 1fr;
   }
 }
+
+/* --- Printing report modals ---
+   Reports are rendered inside a modal, so printing the page directly would
+   emit the whole dashboard behind the dimmed overlay. Marking the report
+   with .printable-report lets print isolate it: everything is hidden with
+   `visibility`, which (unlike `display: none`) preserves the layout of the
+   report's own ancestors, then just the report subtree is made visible and
+   lifted to the top of the sheet. */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  .printable-report,
+  .printable-report * {
+    visibility: visible;
+  }
+
+  /* Neutralise the fixed, dimmed, centred overlay for paper. */
+  .modal-overlay {
+    position: static !important;
+    background: none !important;
+    backdrop-filter: none !important;
+    padding: 0 !important;
+    display: block !important;
+  }
+
+  .printable-report {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    max-width: none !important;
+    max-height: none !important;
+    box-shadow: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* The modal body scrolls on screen; on paper it must flow in full. */
+  .printable-report .modal-body {
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  /* Buttons and other screen-only chrome have no meaning on paper. */
+  .no-print,
+  .printable-report .modal-close-btn,
+  .printable-report .modal-footer {
+    display: none !important;
+  }
+
+  /* Avoid slicing a table row or a supervisor's block across two sheets. */
+  .printable-report table {
+    page-break-inside: auto;
+  }
+
+  .printable-report tr {
+    page-break-inside: avoid;
+  }
+
+  .printable-report .print-keep-together {
+    page-break-inside: avoid;
+  }
+
+  @page {
+    margin: 12mm;
+  }
+}

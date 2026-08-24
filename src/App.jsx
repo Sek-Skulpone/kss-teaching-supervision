@@ -37,6 +37,7 @@ import {
   removeSupervisor,
   submitPostTeachingRecord,
   submitEvaluation,
+  deleteEvaluation,
   getTermPlans,
   addTermPlan,
   updateTermPlan,
@@ -416,6 +417,28 @@ export default function App() {
       const success = await submitEvaluation(supervisionId, currentUser.id, myEvaluation);
       if (success) {
         await refreshSupervisionData();
+        return true;
+      }
+      return false;
+    } catch (e) {
+      console.error(e);
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleDeleteEvaluation = async (supervisionId, supervisorId) => {
+    setIsLoading(true);
+    try {
+      const success = await deleteEvaluation(supervisionId, supervisorId);
+      if (success) {
+        const freshData = await refreshSupervisionData();
+        // Keep the open summary modal in sync so the removed evaluator
+        // disappears without needing to close and reopen it.
+        if (freshData && selectedSummarySupervision?.id === supervisionId) {
+          setSelectedSummarySupervision(freshData.find(s => s.id === supervisionId) || null);
+        }
         return true;
       }
       return false;
@@ -980,6 +1003,7 @@ export default function App() {
                 onDeleteSupervision={handleDeleteSupervision}
                 onAddSupervision={handleAddSupervision}
                 onSubmitEvaluation={handleSubmitEvaluation}
+                onDeleteEvaluation={handleDeleteEvaluation}
                 settings={settings}
                 onUpdateSettings={handleUpdateSettings}
                 onUpdateTeacherPlc={handleUpdateTeacherPlc}
@@ -1294,6 +1318,8 @@ export default function App() {
         <EvaluationSummaryModal
           supervision={selectedSummarySupervision}
           onClose={() => setSelectedSummarySupervision(null)}
+          canDeleteEvaluations={currentUser.role === 'admin'}
+          onDeleteEvaluation={handleDeleteEvaluation}
         />
       )}
 
