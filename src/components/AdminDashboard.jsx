@@ -308,16 +308,20 @@ export default function AdminDashboard({
     return by === column ? (dir === 'asc' ? ' ▲' : ' ▼') : ' ⇅';
   };
 
+  // Returns [{ row, seq }]. `seq` is the row's own ลำดับ, fixed by its place
+  // in the list's natural order, so it travels WITH the row: sorting
+  // descending shows 33, 32, 31... rather than renumbering the screen 1, 2, 3
+  // top-down. Sorting by name likewise keeps each row's original number, so
+  // the column still says where that person sits in the underlying order.
   // `nameOf` reads whatever field holds the person's name for that list.
   const sortList = (key, rows, nameOf = (r) => r.name) => {
     const { by, dir } = listSortFor(key);
     const sign = dir === 'asc' ? 1 : -1;
     return rows
-      .map((row, originalIndex) => ({ row, originalIndex }))
+      .map((row, originalIndex) => ({ row, seq: originalIndex + 1, originalIndex }))
       .sort((a, b) => (by === 'name'
         ? (nameOf(a.row) || '').localeCompare(nameOf(b.row) || '', 'th') * sign
-        : (a.originalIndex - b.originalIndex) * sign))
-      .map(x => x.row);
+        : (a.originalIndex - b.originalIndex) * sign));
   };
 
   const toggleSort = (column) => {
@@ -346,6 +350,24 @@ export default function AdminDashboard({
 
   // Sorted view of the assigned/completed table. Records with no date yet
   // always sink to the bottom rather than sorting as an empty string.
+  // Each record's ลำดับ, fixed by recording order. Held on the row rather than
+  // recomputed per screen position, so sorting descending shows 10, 9, 8...
+  // instead of renumbering the visible rows 1, 2, 3 downwards -- and sorting
+  // by name or date keeps each row's number, which still says when it was
+  // recorded relative to the others.
+  const recordingOrdinal = new Map(
+    activeAndCompleted
+      .map((record, originalIndex) => ({ record, originalIndex }))
+      .sort((x, y) => {
+        const tA = recordedAtMs(x.record);
+        const tB = recordedAtMs(y.record);
+        if (tA !== null && tB !== null && tA !== tB) return tA - tB;
+        // One or both untimestamped: append order is the best signal left.
+        return x.originalIndex - y.originalIndex;
+      })
+      .map((x, position) => [x.record.id, position + 1])
+  );
+
   const sortedActiveAndCompleted = activeAndCompleted
     .map((record, originalIndex) => ({ record, originalIndex }))
     .sort((x, y) => {
@@ -354,11 +376,7 @@ export default function AdminDashboard({
       const b = y.record;
 
       if (sortBy === 'index') {
-        const tA = recordedAtMs(a);
-        const tB = recordedAtMs(b);
-        if (tA !== null && tB !== null && tA !== tB) return (tA - tB) * dir;
-        // One or both untimestamped: append order is the best signal left.
-        return (x.originalIndex - y.originalIndex) * dir;
+        return (recordingOrdinal.get(a.id) - recordingOrdinal.get(b.id)) * dir;
       }
       if (sortBy === 'teacher') {
         return (a.teacherName || '').localeCompare(b.teacherName || '', 'th') * dir;
@@ -1155,9 +1173,9 @@ export default function AdminDashboard({
                     </tr>
                   </thead>
                   <tbody>
-                    {sortList('pending', pendingAssignments, (r) => r.teacherName).map((req, rowIndex) => (
+                    {sortList('pending', pendingAssignments, (r) => r.teacherName).map(({ row: req, seq }) => (
                       <tr key={req.id}>
-                        <td style={{ textAlign: 'center', color: 'var(--text-medium)', fontWeight: 600 }}>{rowIndex + 1}</td>
+                        <td style={{ textAlign: 'center', color: 'var(--text-medium)', fontWeight: 600 }}>{seq}</td>
                         <td style={{ fontWeight: 600 }}>{req.teacherName}</td>
                         <td>{req.subject}</td>
                         <td>{req.grade}/{req.room}</td>
@@ -1370,7 +1388,7 @@ export default function AdminDashboard({
                     </tr>
                   </thead>
                   <tbody>
-                    {sortedActiveAndCompleted.map((req, rowIndex) => (
+                    {sortedActiveAndCompleted.map((req) => (
                       <tr key={req.id}>
                         <td
                           style={{ textAlign: 'center', color: 'var(--text-medium)', fontWeight: 600 }}
@@ -1381,7 +1399,7 @@ export default function AdminDashboard({
                               : 'ไม่มีข้อมูลเวลาที่บันทึก (รายการเก่า)';
                           })()}
                         >
-                          {rowIndex + 1}
+                          {recordingOrdinal.get(req.id)}
                         </td>
                         <td style={{ fontWeight: 600 }}>{req.teacherName}</td>
                         <td>{req.subject}</td>
@@ -1865,9 +1883,9 @@ export default function AdminDashboard({
                     </tr>
                   </thead>
                   <tbody>
-                    {sortList('personnel', teachers).map((t, rowIndex) => (
+                    {sortList('personnel', teachers).map(({ row: t, seq }) => (
                       <tr key={t.id}>
-                        <td style={{ textAlign: 'center', color: 'var(--text-medium)', fontWeight: 600 }}>{rowIndex + 1}</td>
+                        <td style={{ textAlign: 'center', color: 'var(--text-medium)', fontWeight: 600 }}>{seq}</td>
                         <td>
                           {t.profilePicture ? (
                             <img
@@ -2300,11 +2318,11 @@ export default function AdminDashboard({
                     </tr>
                   </thead>
                   <tbody>
-                    {sortList('summary', teachers).map((teacher, rowIndex) => {
+                    {sortList('summary', teachers).map(({ row: teacher, seq }) => {
                       const stats = getTeacherOverallStats(teacher.id);
                       return (
                         <tr key={teacher.id}>
-                          <td style={{ textAlign: 'center', color: 'var(--text-medium)', fontWeight: 600 }}>{rowIndex + 1}</td>
+                          <td style={{ textAlign: 'center', color: 'var(--text-medium)', fontWeight: 600 }}>{seq}</td>
                           <td style={{ fontWeight: 600 }}>{teacher.name}</td>
                           <td style={{ fontSize: '13px' }}>{teacher.position}</td>
                           <td style={{ textAlign: 'center', fontWeight: 600 }}>{stats.supervisionsCount}</td>
@@ -2539,7 +2557,7 @@ export default function AdminDashboard({
                   .filter(t => t.role === 'teacher')
                   .filter(t => !plcFilterGroup || t.plcGroup === plcFilterGroup)
                   .filter(t => !plcFilterSearch || t.name.toLowerCase().includes(plcFilterSearch.toLowerCase())))
-                  .map((teacher, rowIndex) => {
+                  .map(({ row: teacher, seq }) => {
                     const teacherLogs = plcLogs.filter(log => log.teacherId === teacher.id && matchesYear(log, selectedAdminPlcYear));
                     const cycle1 = teacherLogs.find(log => Number(log.cycle) === 1);
                     const cycle2 = teacherLogs.find(log => Number(log.cycle) === 2);
@@ -2562,7 +2580,7 @@ export default function AdminDashboard({
 
                     return (
                       <tr key={teacher.id}>
-                        <td style={{ textAlign: 'center', color: 'var(--text-medium)', fontWeight: 600 }}>{rowIndex + 1}</td>
+                        <td style={{ textAlign: 'center', color: 'var(--text-medium)', fontWeight: 600 }}>{seq}</td>
                         <td style={{ fontWeight: 600 }}>{teacher.name}</td>
                         <td style={{ fontSize: '13px' }}>{teacher.plcGroup || <span style={{ color: 'var(--text-light)', fontStyle: 'italic' }}>ยังไม่ได้จัดกลุ่ม</span>}</td>
                         
