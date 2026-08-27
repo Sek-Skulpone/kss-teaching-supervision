@@ -5,7 +5,7 @@ import EvaluationSummaryModal from './EvaluationSummaryModal';
 import AvatarEditorModal from './AvatarEditorModal';
 import { formatThaiDate } from '../utils/thaiDate';
 import { getStatusLabel } from '../utils/statusLabels';
-import { todayDateString } from '../utils/localDate';
+import { todayDateString, toLocalDateString } from '../utils/localDate';
 import { getEvaluationImages } from '../db';
 
 const PERIODS_LIST = [
@@ -283,9 +283,23 @@ export default function AdminDashboard({
     }
   };
 
+  // When a supervision was entered into the system, in epoch ms, so the
+  // ลำดับ column can show who was recorded before whom. Three generations of
+  // records exist: current ones carry createdAt; older ones predate that
+  // field but have a `sup-<epoch>` id from when ids were built with
+  // Date.now(); the oldest have neither and fall back to their position in
+  // the stored array, which is append order.
+  const recordedAtMs = (s) => {
+    if (s.createdAt) {
+      const parsed = Date.parse(s.createdAt);
+      if (!Number.isNaN(parsed)) return parsed;
+    }
+    const legacyId = /^sup-(\d{10,})$/.exec(s.id || '');
+    return legacyId ? Number(legacyId[1]) : null;
+  };
+
   // Sorted view of the assigned/completed table. Records with no date yet
   // always sink to the bottom rather than sorting as an empty string.
-  // Sorting by 'index' falls back to the order records were created in.
   const sortedActiveAndCompleted = activeAndCompleted
     .map((record, originalIndex) => ({ record, originalIndex }))
     .sort((x, y) => {
@@ -294,6 +308,10 @@ export default function AdminDashboard({
       const b = y.record;
 
       if (sortBy === 'index') {
+        const tA = recordedAtMs(a);
+        const tB = recordedAtMs(b);
+        if (tA !== null && tB !== null && tA !== tB) return (tA - tB) * dir;
+        // One or both untimestamped: append order is the best signal left.
         return (x.originalIndex - y.originalIndex) * dir;
       }
       if (sortBy === 'teacher') {
@@ -1283,7 +1301,11 @@ export default function AdminDashboard({
                 <table>
                   <thead>
                     <tr>
-                      <th {...sortableHeaderProps('index')} style={{ ...sortableHeaderProps('index').style, textAlign: 'center', width: '1%' }}>
+                      <th
+                        {...sortableHeaderProps('index')}
+                        style={{ ...sortableHeaderProps('index').style, textAlign: 'center', width: '1%' }}
+                        title="คลิกเพื่อเรียงตามลำดับที่บันทึกเข้าระบบ (ก่อน-หลัง)"
+                      >
                         ลำดับ{sortIndicator('index')}
                       </th>
                       <th {...sortableHeaderProps('teacher')}>ครูผู้รับนิเทศ{sortIndicator('teacher')}</th>
@@ -1300,7 +1322,17 @@ export default function AdminDashboard({
                   <tbody>
                     {sortedActiveAndCompleted.map((req, rowIndex) => (
                       <tr key={req.id}>
-                        <td style={{ textAlign: 'center', color: 'var(--text-medium)', fontWeight: 600 }}>{rowIndex + 1}</td>
+                        <td
+                          style={{ textAlign: 'center', color: 'var(--text-medium)', fontWeight: 600 }}
+                          title={(() => {
+                            const ms = recordedAtMs(req);
+                            return ms
+                              ? `บันทึกเข้าระบบเมื่อ ${formatThaiDate(toLocalDateString(new Date(ms)))}`
+                              : 'ไม่มีข้อมูลเวลาที่บันทึก (รายการเก่า)';
+                          })()}
+                        >
+                          {rowIndex + 1}
+                        </td>
                         <td style={{ fontWeight: 600 }}>{req.teacherName}</td>
                         <td>{req.subject}</td>
                         <td>ชั้น ม.{req.grade.replace('ม.', '')}/{req.room}</td>

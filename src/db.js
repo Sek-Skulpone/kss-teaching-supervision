@@ -311,6 +311,11 @@ export const addSupervision = async (supervision) => {
     volunteerId: '',
     volunteerName: '',
     postTeachingRecord: null,
+    // When the request was entered into the system -- distinct from `date`,
+    // which is when the lesson is actually observed. Needed to show who was
+    // recorded before whom; PLC logs and term plans already carry the
+    // equivalent `submittedAt`.
+    createdAt: new Date().toISOString(),
     ...supervision
   };
   const { success } = await mutateCollection('supervisions', (list) => [...list, newSupervision]);
