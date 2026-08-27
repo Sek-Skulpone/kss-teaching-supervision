@@ -183,31 +183,57 @@ export default function AdminDashboard({
     );
     const isBusy = assigningId === req.id;
 
+    // Names already queued are taken out of the dropdown so the same person
+    // can't be added twice.
+    const selectable = candidates.filter(t => !pending.includes(t.id));
+
     return (
       <div style={{ marginTop: '0.35rem' }}>
-        <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-medium)', marginBottom: '0.2rem' }}>
-          เลือกผู้นิเทศ (เลือกได้หลายท่าน):
-        </div>
-        <div style={{ maxHeight: '110px', overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: '4px', padding: '0.25rem 0.4rem', backgroundColor: '#fafafa' }}>
-          {candidates.length === 0 ? (
-            <div style={{ fontSize: '11px', color: 'var(--text-light)', padding: '0.25rem' }}>
-              ไม่มีรายชื่อครูที่แต่งตั้งได้
-            </div>
-          ) : candidates.map(t => (
-            <label
-              key={t.id}
-              style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '12px', padding: '0.15rem 0', cursor: 'pointer', marginBottom: 0, fontWeight: 400, color: 'var(--text-dark)' }}
-            >
-              <input
-                type="checkbox"
-                checked={pending.includes(t.id)}
-                onChange={() => togglePendingSupervisor(req.id, t.id)}
-                style={{ width: 'auto', margin: 0, padding: 0 }}
-              />
-              <span>{t.name}</span>
-            </label>
+        <select
+          value=""
+          onChange={(e) => {
+            if (e.target.value) togglePendingSupervisor(req.id, e.target.value);
+          }}
+          style={{ padding: '4px 8px', fontSize: '12px', width: '100%' }}
+        >
+          <option value="">
+            {selectable.length === 0 ? '-- ไม่มีรายชื่อครูที่แต่งตั้งได้ --' : '-- เลือกผู้นิเทศเพิ่ม --'}
+          </option>
+          {selectable.map(t => (
+            <option key={t.id} value={t.id}>{t.name}</option>
           ))}
-        </div>
+        </select>
+
+        {/* Queued but not yet appointed -- nothing is written until the
+            button below is pressed. */}
+        {pending.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', marginTop: '0.35rem' }}>
+            <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-medium)' }}>
+              รอแต่งตั้ง ({pending.length} ท่าน):
+            </span>
+            {pending.map(id => {
+              const t = teachers.find(x => x.id === id);
+              return (
+                <div
+                  key={id}
+                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'var(--secondary-light)', border: '1px solid var(--secondary-color)', padding: '2px 8px', borderRadius: '4px', fontSize: '12px' }}
+                >
+                  <span>{t ? t.name : id}</span>
+                  <button
+                    type="button"
+                    className="icon-remove-btn"
+                    title="นำออกจากรายการรอแต่งตั้ง"
+                    aria-label={`นำ ${t ? t.name : id} ออกจากรายการรอแต่งตั้ง`}
+                    onClick={() => togglePendingSupervisor(req.id, id)}
+                  >
+                    ✖
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
         <button
           className="btn btn-primary"
           style={{ padding: '4px 10px', fontSize: '12px', marginTop: '0.35rem', width: '100%' }}
