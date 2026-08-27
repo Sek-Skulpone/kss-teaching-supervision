@@ -34,7 +34,7 @@ import {
   volunteerToSupervise,
   approveVolunteer,
   rejectVolunteer,
-  assignSupervisor,
+  assignSupervisors,
   removeSupervisor,
   submitPostTeachingRecord,
   submitEvaluation,
@@ -539,17 +539,24 @@ export default function App() {
     }
   };
 
-  const handleAssignSupervisor = async (supervisionId, supervisorId, supervisorName) => {
+  // Accepts either a single supervisor or a whole committee at once.
+  const handleAssignSupervisor = async (supervisionId, supervisorsOrId, supervisorName) => {
+    const supervisors = Array.isArray(supervisorsOrId)
+      ? supervisorsOrId
+      : [{ id: supervisorsOrId, name: supervisorName }];
+
     setIsLoading(true);
     try {
-      await assignSupervisor(supervisionId, supervisorId, supervisorName);
+      const success = await assignSupervisors(supervisionId, supervisors);
       const freshData = await refreshSupervisionData();
       if (selectedEvent && selectedEvent.id === supervisionId && freshData) {
         const updated = freshData.find(s => s.id === supervisionId);
         setSelectedEvent(updated);
       }
+      return success;
     } catch (e) {
       console.error(e);
+      return false;
     } finally {
       setIsLoading(false);
     }

@@ -43,7 +43,13 @@ export default function AdminDashboard({
 }) {
   const [activeSubTab, setActiveSubTab] = useState('supervisions');
   const [selectedSupervisionYear, setSelectedSupervisionYear] = useState(settings.currentAcademicYear || '2569');
+  // { [supervisionId]: [teacherId, ...] } -- committee members ticked but not
+  // yet appointed. Committed together by handleAssignClick.
   const [selectedTeacherId, setSelectedTeacherId] = useState({});
+  const [assigningId, setAssigningId] = useState(null);
+  // Sorting for the assigned/completed supervision table.
+  const [sortBy, setSortBy] = useState('date');
+  const [sortDir, setSortDir] = useState('asc');
   const [selectedIndividualTeacherId, setSelectedIndividualTeacherId] = useState('');
   const [selectedIndividualYear, setSelectedIndividualYear] = useState('2569');
   const [selectedReport, setSelectedReport] = useState(null);
@@ -168,6 +174,52 @@ export default function AdminDashboard({
     return () => { cancelled = true; };
   }, [plcReportSupervisionId, evalImagesBySupervision]);
 
+  // Committee picker: tick as many teachers as needed, then appoint them all
+  // with one button press (and one write) instead of one per person.
+  const renderAssignPicker = (req) => {
+    const pending = selectedTeacherId[req.id] || [];
+    const candidates = teachers.filter(
+      t => t.id !== req.teacherId && !(req.supervisors || []).some(sup => sup.id === t.id)
+    );
+    const isBusy = assigningId === req.id;
+
+    return (
+      <div style={{ marginTop: '0.35rem' }}>
+        <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-medium)', marginBottom: '0.2rem' }}>
+          เลือกผู้นิเทศ (เลือกได้หลายท่าน):
+        </div>
+        <div style={{ maxHeight: '110px', overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: '4px', padding: '0.25rem 0.4rem', backgroundColor: '#fafafa' }}>
+          {candidates.length === 0 ? (
+            <div style={{ fontSize: '11px', color: 'var(--text-light)', padding: '0.25rem' }}>
+              ไม่มีรายชื่อครูที่แต่งตั้งได้
+            </div>
+          ) : candidates.map(t => (
+            <label
+              key={t.id}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '12px', padding: '0.15rem 0', cursor: 'pointer', marginBottom: 0, fontWeight: 400, color: 'var(--text-dark)' }}
+            >
+              <input
+                type="checkbox"
+                checked={pending.includes(t.id)}
+                onChange={() => togglePendingSupervisor(req.id, t.id)}
+                style={{ width: 'auto', margin: 0, padding: 0 }}
+              />
+              <span>{t.name}</span>
+            </label>
+          ))}
+        </div>
+        <button
+          className="btn btn-primary"
+          style={{ padding: '4px 10px', fontSize: '12px', marginTop: '0.35rem', width: '100%' }}
+          onClick={() => handleAssignClick(req.id)}
+          disabled={isBusy || pending.length === 0}
+        >
+          {isBusy ? 'กำลังแต่งตั้ง...' : `แต่งตั้งผู้นิเทศ${pending.length > 0 ? ` (${pending.length} ท่าน)` : ''}`}
+        </button>
+      </div>
+    );
+  };
+
   // Photos for one supervision's evaluations, falling back to any still
   // stored inline on records that predate the split.
   const evaluationImagesFor = (sup) => {
@@ -196,23 +248,93 @@ export default function AdminDashboard({
   // Filter approved/completed supervisions
   const activeAndCompleted = yearSupervisions.filter(s => s.status === 'approved' || s.status === 'completed');
 
+  const toggleSort = (column) => {
+    if (sortBy === column) {
+      setSortDir(prev => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortBy(column);
+      setSortDir('asc');
+    }
+  };
+
+  // Sorted view of the assigned/completed table. Records with no date yet
+  // always sink to the bottom rather than sorting as an empty string.
+  const sortedActiveAndCompleted = [...activeAndCompleted].sort((a, b) => {
+    const dir = sortDir === 'asc' ? 1 : -1;
+
+    if (sortBy === 'teacher') {
+      return (a.teacherName || '').localeCompare(b.teacherName || '', 'th') * dir;
+    }
+    if (sortBy === 'subject') {
+      return (a.subject || '').localeCompare(b.subject || '', 'th') * dir;
+    }
+    // date (with period as the tie-breaker within the same day)
+    if (!a.date && !b.date) return 0;
+    if (!a.date) return 1;
+    if (!b.date) return -1;
+    if (a.date !== b.date) return a.date.localeCompare(b.date) * dir;
+    return (a.time || '').localeCompare(b.time || '', 'th') * dir;
+  });
+
+  const sortIndicator = (column) => (sortBy === column ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ' ⇅');
+
+  const sortableHeaderProps = (column) => ({
+    onClick: () => toggleSort(column),
+    role: 'button',
+    tabIndex: 0,
+    onKeyDown: (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        toggleSort(column);
+      }
+    },
+    style: { cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' },
+    title: 'คลิกเพื่อเรียงลำดับ'
+  });
+
   // Handle direct supervisor assignment
-  const handleAssignClick = (supervisionId) => {
-    const teacherId = selectedTeacherId[supervisionId];
-    if (!teacherId) {
+  const togglePendingSupervisor = (supervisionId, teacherId) => {
+    setSelectedTeacherId(prev => {
+      const current = prev[supervisionId] || [];
+      return {
+        ...prev,
+        [supervisionId]: current.includes(teacherId)
+          ? current.filter(id => id !== teacherId)
+          : [...current, teacherId]
+      };
+    });
+  };
+
+  // Appoints every teacher ticked for this supervision in one go, rather than
+  // one write per person.
+  const handleAssignClick = async (supervisionId) => {
+    const ids = selectedTeacherId[supervisionId] || [];
+    if (ids.length === 0) {
       alert('กรุณาเลือกรายชื่อครูที่จะแต่งตั้งเป็นผู้นิเทศ');
       return;
     }
-    const supervisor = teachers.find(t => t.id === teacherId);
-    if (supervisor) {
-      onAssignSupervisor(supervisionId, supervisor.id, supervisor.name);
-      // Clean selected state
-      setSelectedTeacherId(prev => {
-        const next = { ...prev };
-        delete next[supervisionId];
-        return next;
-      });
-      alert('แต่งตั้งผู้นิเทศสำเร็จ!');
+
+    const chosen = ids
+      .map(id => teachers.find(t => t.id === id))
+      .filter(Boolean)
+      .map(t => ({ id: t.id, name: t.name }));
+    if (chosen.length === 0) return;
+
+    setAssigningId(supervisionId);
+    try {
+      const success = await onAssignSupervisor(supervisionId, chosen);
+      if (success !== false) {
+        setSelectedTeacherId(prev => {
+          const next = { ...prev };
+          delete next[supervisionId];
+          return next;
+        });
+        alert(`แต่งตั้งผู้นิเทศ ${chosen.length} ท่านเรียบร้อยแล้ว`);
+      } else {
+        alert('เกิดข้อผิดพลาดในการแต่งตั้งผู้นิเทศ กรุณาลองใหม่อีกครั้ง');
+      }
+    } finally {
+      setAssigningId(null);
     }
   };
 
@@ -1090,32 +1212,7 @@ export default function AdminDashboard({
                             )}
 
                             {/* Assignment Selector (Only show if need more) */}
-                            {(!req.supervisors || req.supervisors.length < 2) && (
-                              <div style={{ display: 'flex', gap: '0.25rem', marginTop: '0.25rem' }}>
-                                <select
-                                  value={selectedTeacherId[req.id] || ''}
-                                  onChange={(e) => {
-                                    const val = e.target.value;
-                                    setSelectedTeacherId(prev => ({ ...prev, [req.id]: val }));
-                                  }}
-                                  style={{ padding: '4px 8px', fontSize: '12px', flex: 1 }}
-                                >
-                                  <option value="">-- แต่งตั้งผู้นิเทศ --</option>
-                                  {teachers
-                                    .filter(t => t.id !== req.teacherId && (!req.supervisors || !req.supervisors.some(sup => sup.id === t.id)))
-                                    .map(t => (
-                                      <option key={t.id} value={t.id}>{t.name}</option>
-                                    ))}
-                                </select>
-                                <button
-                                  className="btn btn-primary"
-                                  style={{ padding: '4px 8px', fontSize: '12px' }}
-                                  onClick={() => handleAssignClick(req.id)}
-                                >
-                                  แต่งตั้ง
-                                </button>
-                              </div>
-                            )}
+                            {(!req.supervisors || req.supervisors.length < 2) && renderAssignPicker(req)}
                           </div>
                         </td>
                         <td style={{ textAlign: 'center' }}>
@@ -1151,10 +1248,10 @@ export default function AdminDashboard({
                 <table>
                   <thead>
                     <tr>
-                      <th>ครูผู้รับนิเทศ</th>
-                      <th>รายวิชา</th>
+                      <th {...sortableHeaderProps('teacher')}>ครูผู้รับนิเทศ{sortIndicator('teacher')}</th>
+                      <th {...sortableHeaderProps('subject')}>รายวิชา{sortIndicator('subject')}</th>
                       <th>ระดับชั้น/ห้องเรียน</th>
-                      <th>วัน-เวลาที่นิเทศ</th>
+                      <th {...sortableHeaderProps('date')}>วัน-เวลาที่นิเทศ{sortIndicator('date')}</th>
                       <th>คณะกรรมการนิเทศ</th>
                       <th>สถานะการนิเทศ</th>
                       <th>นิเทศหน้าเดียว</th>
@@ -1163,7 +1260,7 @@ export default function AdminDashboard({
                     </tr>
                   </thead>
                   <tbody>
-                    {activeAndCompleted.map((req) => (
+                    {sortedActiveAndCompleted.map((req) => (
                       <tr key={req.id}>
                         <td style={{ fontWeight: 600 }}>{req.teacherName}</td>
                         <td>{req.subject}</td>
@@ -1258,31 +1355,8 @@ export default function AdminDashboard({
                               <span style={{ color: 'var(--text-light)', fontStyle: 'italic', fontSize: '12px' }}>ยังไม่ได้รับการแต่งตั้ง</span>
                             )}
 
-                            {/* Dropdown to add more supervisors */}
-                            <div style={{ display: 'flex', gap: '0.25rem', marginTop: '0.25rem' }}>
-                              <select
-                                value={selectedTeacherId[req.id] || ''}
-                                onChange={(e) => {
-                                  const val = e.target.value;
-                                  setSelectedTeacherId(prev => ({ ...prev, [req.id]: val }));
-                                }}
-                                style={{ padding: '2px 4px', fontSize: '12px', flex: 1 }}
-                              >
-                                <option value="">+ แต่งตั้งผู้นิเทศ</option>
-                                {teachers
-                                  .filter(t => t.id !== req.teacherId && (!req.supervisors || !req.supervisors.some(sup => sup.id === t.id)))
-                                  .map(t => (
-                                    <option key={t.id} value={t.id}>{t.name}</option>
-                                  ))}
-                              </select>
-                              <button
-                                className="btn btn-primary"
-                                style={{ padding: '2px 6px', fontSize: '11px' }}
-                                onClick={() => handleAssignClick(req.id)}
-                              >
-                                แต่งตั้ง
-                              </button>
-                            </div>
+                            {/* Add more supervisors to an already-appointed committee */}
+                            {renderAssignPicker(req)}
                           </div>
                         </td>
                         <td>

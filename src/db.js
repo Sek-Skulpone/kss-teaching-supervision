@@ -384,29 +384,43 @@ export const rejectVolunteer = async (supervisionId) => {
   return matched && success;
 };
 
-export const assignSupervisor = async (supervisionId, supervisorId, supervisorName) => {
+// Appoints one or more supervisors in a SINGLE transaction. Assigning a
+// whole committee used to mean one write (and one status recalculation) per
+// person, which briefly left the record in a half-appointed state and could
+// interleave with another admin's writes; doing it in one pass avoids both.
+// `newSupervisors` is [{ id, name }]. Already-appointed people are ignored.
+export const assignSupervisors = async (supervisionId, newSupervisors) => {
+  const toAdd = (newSupervisors || []).filter(s => s && s.id);
+  if (toAdd.length === 0) return false;
+
   let matched = false;
   const { success } = await mutateCollection('supervisions', (list) =>
     list.map(s => {
-      if (s.id === supervisionId) {
-        matched = true;
-        const supervisors = [...(s.supervisors || [])];
-        if (!supervisors.some(sup => sup.id === supervisorId)) {
-          supervisors.push({ id: supervisorId, name: supervisorName });
+      if (s.id !== supervisionId) return s;
+      matched = true;
+
+      const supervisors = [...(s.supervisors || [])];
+      toAdd.forEach(({ id, name }) => {
+        if (!supervisors.some(sup => sup.id === id)) {
+          supervisors.push({ id, name });
         }
-        const status = supervisors.length >= 2 ? 'approved' : 'pending';
-        const res = { ...s, status, supervisors };
-        if (s.volunteerId === supervisorId) {
-          res.volunteerId = '';
-          res.volunteerName = '';
-        }
-        return res;
+      });
+
+      const status = supervisors.length >= 2 ? 'approved' : 'pending';
+      const res = { ...s, status, supervisors };
+      // A volunteer who has now been appointed is no longer pending approval.
+      if (toAdd.some(({ id }) => id === s.volunteerId)) {
+        res.volunteerId = '';
+        res.volunteerName = '';
       }
-      return s;
+      return res;
     })
   );
   return matched && success;
 };
+
+export const assignSupervisor = async (supervisionId, supervisorId, supervisorName) =>
+  assignSupervisors(supervisionId, [{ id: supervisorId, name: supervisorName }]);
 
 export const removeSupervisor = async (supervisionId, supervisorId) => {
   let matched = false;
