@@ -2437,8 +2437,22 @@ export default function AdminDashboard({
                     const teacherLogs = plcLogs.filter(log => log.teacherId === teacher.id && matchesYear(log, selectedAdminPlcYear));
                     const cycle1 = teacherLogs.find(log => Number(log.cycle) === 1);
                     const cycle2 = teacherLogs.find(log => Number(log.cycle) === 2);
-                    const cycle3 = teacherLogs.find(log => Number(log.cycle) === 3);
                     const cycle4 = teacherLogs.find(log => Number(log.cycle) === 4);
+
+                    // Cycle 3 is the supervision itself ("ปฏิบัติการสอนและนิเทศ
+                    // แบบชี้แนะ") -- teachers never file a PLC log for it, so
+                    // looking for one here always came up empty and the column
+                    // read "ยังไม่บันทึก" even for teachers who had been
+                    // supervised. It comes from the supervision record instead,
+                    // matching how the full report and the teacher's own
+                    // progress count already treat it.
+                    const cycle3Supervision = supervisions.find(
+                      s => s.teacherId === teacher.id && matchesYear(s, selectedAdminPlcYear)
+                    );
+                    const cycle3Evaluated =
+                      cycle3Supervision &&
+                      (Object.keys(cycle3Supervision.evaluations || {}).length > 0 ||
+                        cycle3Supervision.status === 'completed');
 
                     return (
                       <tr key={teacher.id}>
@@ -2476,15 +2490,25 @@ export default function AdminDashboard({
                         </td>
                         
                         <td style={{ textAlign: 'center' }}>
-                          {cycle3 ? (
+                          {cycle3Evaluated ? (
                             <button
-                              onClick={() => setSelectedPlcLogDetail(cycle3)}
+                              onClick={() => setSelectedSummarySupervision(cycle3Supervision)}
                               className="badge badge-approved"
                               style={{ border: 'none', cursor: 'pointer', padding: '0.3rem 0.6rem' }}
-                              title="คลิกเพื่อดูรายละเอียด"
+                              title="คลิกเพื่อดูผลการนิเทศ"
                             >
                               ✓ บันทึกแล้ว
                             </button>
+                          ) : cycle3Supervision ? (
+                            <span
+                              className="badge badge-pending"
+                              style={{ fontSize: '11px' }}
+                              title={cycle3Supervision.date
+                                ? `นัดนิเทศวันที่ ${formatThaiDate(cycle3Supervision.date)}`
+                                : 'ยังไม่กำหนดวันนิเทศ'}
+                            >
+                              ⏳ รอผลนิเทศ
+                            </span>
                           ) : (
                             <span style={{ color: 'var(--text-light)', fontSize: '11px', fontStyle: 'italic' }}>ยังไม่บันทึก</span>
                           )}
@@ -2512,7 +2536,7 @@ export default function AdminDashboard({
                             onClick={() => {
                               setSelectedPlcTeacher(teacher);
                             }}
-                            disabled={teacherLogs.length === 0}
+                            disabled={teacherLogs.length === 0 && !cycle3Supervision}
                           >
                             🔍 ดูรายงานเต็ม
                           </button>
