@@ -50,6 +50,8 @@ export default function AdminDashboard({
   // Sorting for the assigned/completed supervision table.
   const [sortBy, setSortBy] = useState('date');
   const [sortDir, setSortDir] = useState('asc');
+  // Per-table sort state for the other teacher lists, keyed by table name.
+  const [listSort, setListSort] = useState({});
   const [selectedIndividualTeacherId, setSelectedIndividualTeacherId] = useState('');
   const [selectedIndividualYear, setSelectedIndividualYear] = useState('2569');
   const [selectedReport, setSelectedReport] = useState(null);
@@ -273,6 +275,50 @@ export default function AdminDashboard({
 
   // Filter approved/completed supervisions
   const activeAndCompleted = yearSupervisions.filter(s => s.status === 'approved' || s.status === 'completed');
+
+  // Generic ลำดับ/name sorting for the other teacher-list tables, each keyed
+  // by table so they sort independently. 'index' means the list's own natural
+  // order (which for the teacher roster is the order teachers were added).
+  const nextDir = (cur, col) => (cur.by === col && cur.dir === 'asc' ? 'desc' : 'asc');
+  const listSortFor = (key) => listSort[key] || { by: 'index', dir: 'asc' };
+
+  const toggleListSort = (key, column) => {
+    setListSort(prev => {
+      const cur = prev[key] || { by: 'index', dir: 'asc' };
+      return { ...prev, [key]: { by: column, dir: nextDir(cur, column) } };
+    });
+  };
+
+  const listHeaderProps = (key, column) => ({
+    onClick: () => toggleListSort(key, column),
+    role: 'button',
+    tabIndex: 0,
+    onKeyDown: (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        toggleListSort(key, column);
+      }
+    },
+    style: { cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' },
+    title: 'คลิกเพื่อเรียงลำดับ'
+  });
+
+  const listIndicator = (key, column) => {
+    const { by, dir } = listSortFor(key);
+    return by === column ? (dir === 'asc' ? ' ▲' : ' ▼') : ' ⇅';
+  };
+
+  // `nameOf` reads whatever field holds the person's name for that list.
+  const sortList = (key, rows, nameOf = (r) => r.name) => {
+    const { by, dir } = listSortFor(key);
+    const sign = dir === 'asc' ? 1 : -1;
+    return rows
+      .map((row, originalIndex) => ({ row, originalIndex }))
+      .sort((a, b) => (by === 'name'
+        ? (nameOf(a.row) || '').localeCompare(nameOf(b.row) || '', 'th') * sign
+        : (a.originalIndex - b.originalIndex) * sign))
+      .map(x => x.row);
+  };
 
   const toggleSort = (column) => {
     if (sortBy === column) {
@@ -1096,7 +1142,10 @@ export default function AdminDashboard({
                 <table>
                   <thead>
                     <tr>
-                      <th>ครูผู้ขอรับการนิเทศ</th>
+                      <th {...listHeaderProps('pending', 'index')} style={{ ...listHeaderProps('pending', 'index').style, textAlign: 'center', width: '1%' }}>
+                        ลำดับ{listIndicator('pending', 'index')}
+                      </th>
+                      <th {...listHeaderProps('pending', 'name')}>ครูผู้ขอรับการนิเทศ{listIndicator('pending', 'name')}</th>
                       <th>วิชา</th>
                       <th>ระดับชั้น/ห้อง</th>
                       <th>วัน-เวลานิเทศ</th>
@@ -1106,8 +1155,9 @@ export default function AdminDashboard({
                     </tr>
                   </thead>
                   <tbody>
-                    {pendingAssignments.map((req) => (
+                    {sortList('pending', pendingAssignments, (r) => r.teacherName).map((req, rowIndex) => (
                       <tr key={req.id}>
+                        <td style={{ textAlign: 'center', color: 'var(--text-medium)', fontWeight: 600 }}>{rowIndex + 1}</td>
                         <td style={{ fontWeight: 600 }}>{req.teacherName}</td>
                         <td>{req.subject}</td>
                         <td>{req.grade}/{req.room}</td>
@@ -1802,8 +1852,11 @@ export default function AdminDashboard({
                 <table>
                   <thead>
                     <tr>
+                      <th {...listHeaderProps('personnel', 'index')} style={{ ...listHeaderProps('personnel', 'index').style, textAlign: 'center', width: '1%' }}>
+                        ลำดับ{listIndicator('personnel', 'index')}
+                      </th>
                       <th style={{ width: '1%' }}></th>
-                      <th>ชื่อ-นามสกุล</th>
+                      <th {...listHeaderProps('personnel', 'name')}>ชื่อ-นามสกุล{listIndicator('personnel', 'name')}</th>
                       <th>บทบาท</th>
                       <th>ตำแหน่ง / สังกัดกลุ่มสาระ</th>
                       <th>กลุ่ม PLC</th>
@@ -1812,8 +1865,9 @@ export default function AdminDashboard({
                     </tr>
                   </thead>
                   <tbody>
-                    {teachers.map((t) => (
+                    {sortList('personnel', teachers).map((t, rowIndex) => (
                       <tr key={t.id}>
+                        <td style={{ textAlign: 'center', color: 'var(--text-medium)', fontWeight: 600 }}>{rowIndex + 1}</td>
                         <td>
                           {t.profilePicture ? (
                             <img
@@ -2234,7 +2288,10 @@ export default function AdminDashboard({
                 <table>
                   <thead>
                     <tr>
-                      <th>ชื่อ-นามสกุลครูผู้สอน</th>
+                      <th {...listHeaderProps('summary', 'index')} style={{ ...listHeaderProps('summary', 'index').style, textAlign: 'center', width: '1%' }}>
+                        ลำดับ{listIndicator('summary', 'index')}
+                      </th>
+                      <th {...listHeaderProps('summary', 'name')}>ชื่อ-นามสกุลครูผู้สอน{listIndicator('summary', 'name')}</th>
                       <th>ตำแหน่ง / สังกัดกลุ่มสาระ</th>
                       <th style={{ textAlign: 'center' }}>จำนวนการจองนิเทศ</th>
                       <th style={{ textAlign: 'center' }}>ประเมินแล้ว (ฉบับ)</th>
@@ -2243,10 +2300,11 @@ export default function AdminDashboard({
                     </tr>
                   </thead>
                   <tbody>
-                    {teachers.map((teacher) => {
+                    {sortList('summary', teachers).map((teacher, rowIndex) => {
                       const stats = getTeacherOverallStats(teacher.id);
                       return (
                         <tr key={teacher.id}>
+                          <td style={{ textAlign: 'center', color: 'var(--text-medium)', fontWeight: 600 }}>{rowIndex + 1}</td>
                           <td style={{ fontWeight: 600 }}>{teacher.name}</td>
                           <td style={{ fontSize: '13px' }}>{teacher.position}</td>
                           <td style={{ textAlign: 'center', fontWeight: 600 }}>{stats.supervisionsCount}</td>
@@ -2464,7 +2522,10 @@ export default function AdminDashboard({
             <table>
               <thead>
                 <tr>
-                  <th>ชื่อ-นามสกุลครูผู้สอน</th>
+                  <th {...listHeaderProps('plc', 'index')} style={{ ...listHeaderProps('plc', 'index').style, textAlign: 'center', width: '1%' }}>
+                    ลำดับ{listIndicator('plc', 'index')}
+                  </th>
+                  <th {...listHeaderProps('plc', 'name')}>ชื่อ-นามสกุลครูผู้สอน{listIndicator('plc', 'name')}</th>
                   <th>กลุ่ม PLC</th>
                   <th style={{ textAlign: 'center', width: '100px' }}>วงรอบที่ 1</th>
                   <th style={{ textAlign: 'center', width: '100px' }}>วงรอบที่ 2</th>
@@ -2474,11 +2535,11 @@ export default function AdminDashboard({
                 </tr>
               </thead>
               <tbody>
-                {teachers
+                {sortList('plc', teachers
                   .filter(t => t.role === 'teacher')
                   .filter(t => !plcFilterGroup || t.plcGroup === plcFilterGroup)
-                  .filter(t => !plcFilterSearch || t.name.toLowerCase().includes(plcFilterSearch.toLowerCase()))
-                  .map(teacher => {
+                  .filter(t => !plcFilterSearch || t.name.toLowerCase().includes(plcFilterSearch.toLowerCase())))
+                  .map((teacher, rowIndex) => {
                     const teacherLogs = plcLogs.filter(log => log.teacherId === teacher.id && matchesYear(log, selectedAdminPlcYear));
                     const cycle1 = teacherLogs.find(log => Number(log.cycle) === 1);
                     const cycle2 = teacherLogs.find(log => Number(log.cycle) === 2);
@@ -2501,6 +2562,7 @@ export default function AdminDashboard({
 
                     return (
                       <tr key={teacher.id}>
+                        <td style={{ textAlign: 'center', color: 'var(--text-medium)', fontWeight: 600 }}>{rowIndex + 1}</td>
                         <td style={{ fontWeight: 600 }}>{teacher.name}</td>
                         <td style={{ fontSize: '13px' }}>{teacher.plcGroup || <span style={{ color: 'var(--text-light)', fontStyle: 'italic' }}>ยังไม่ได้จัดกลุ่ม</span>}</td>
                         
@@ -2800,10 +2862,10 @@ export default function AdminDashboard({
                             {cycle4Log.images.map((img, idx) => (
                               <div
                                 key={idx}
+                                className="photo-thumb"
                                 onClick={() => setActivePlcLightboxImage(img)}
-                                style={{ width: '100%', aspectRatio: '4/3', borderRadius: '4px', overflow: 'hidden', border: '1px solid #cbd5e1', cursor: 'pointer' }}
                               >
-                                <img src={img} alt={`PLC Log ${idx}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                <img src={img} alt={`PLC Log ${idx}`} loading="lazy" decoding="async" />
                               </div>
                             ))}
                           </div>
@@ -2917,17 +2979,9 @@ export default function AdminDashboard({
                                     <div 
                                       key={idx} 
                                       onClick={() => setActivePlcLightboxImage(img)}
-                                      style={{ 
-                                        position: 'relative', 
-                                        width: '100%', 
-                                        aspectRatio: '4/3', 
-                                        borderRadius: '4px', 
-                                        overflow: 'hidden', 
-                                        border: '1px solid #cbd5e1', 
-                                        cursor: 'pointer' 
-                                      }}
+                                      className="photo-thumb"
                                     >
-                                      <img src={img} alt="PLC log detail thumbnail" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                      <img src={img} alt="PLC log detail thumbnail" loading="lazy" decoding="async" />
                                     </div>
                                   ))}
                                 </div>
@@ -3053,17 +3107,9 @@ export default function AdminDashboard({
                             <div 
                               key={idx} 
                               onClick={() => setActivePlcLightboxImage(img)}
-                              style={{ 
-                                position: 'relative', 
-                                width: '100%', 
-                                aspectRatio: '4/3', 
-                                borderRadius: '4px', 
-                                overflow: 'hidden', 
-                                border: '1px solid #cbd5e1', 
-                                cursor: 'pointer' 
-                              }}
+                              className="photo-thumb"
                             >
-                              <img src={img} alt="PLC log detail thumbnail" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                              <img src={img} alt="PLC log detail thumbnail" loading="lazy" decoding="async" />
                             </div>
                           ))}
                         </div>

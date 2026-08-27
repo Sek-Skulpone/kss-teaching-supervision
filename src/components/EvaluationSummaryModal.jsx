@@ -393,29 +393,14 @@ export default function EvaluationSummaryModal({ supervision, onClose, canDelete
                                 setActiveLightboxImage(imgUrl);
                               }
                             }}
-                            style={{
-                              position: 'relative',
-                              width: '100%',
-                              aspectRatio: '4/3',
-                              borderRadius: '4px',
-                              overflow: 'hidden',
-                              border: '1px solid #cbd5e1',
-                              cursor: 'pointer',
-                              transition: 'transform 0.2s, box-shadow 0.2s'
-                            }}
-                            onMouseEnter={(e) => {
-                              e.currentTarget.style.transform = 'scale(1.05)';
-                              e.currentTarget.style.boxShadow = '0 4px 8px rgba(0,0,0,0.15)';
-                            }}
-                            onMouseLeave={(e) => {
-                              e.currentTarget.style.transform = 'none';
-                              e.currentTarget.style.boxShadow = 'none';
-                            }}
+                            className="photo-thumb"
+
                           >
                             <img
                               src={imgUrl}
                               alt={`ภาพประกอบการนิเทศโดย ${ev.supervisorName} รูปที่ ${imgIdx + 1}`}
-                              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                              loading="lazy"
+                              decoding="async"
                             />
                           </div>
                         ))}

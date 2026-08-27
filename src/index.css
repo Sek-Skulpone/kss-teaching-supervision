@@ -1260,6 +1260,42 @@ tr:hover td {
   }
 }
 
+/* --- Photo thumbnails ---
+   Evaluation and PLC photos are stored around 700px but shown as ~120px
+   thumbnails, so the browser decodes roughly 35x more pixels than it paints.
+   Doing that for several images, while JS mouse handlers rewrote inline
+   styles as the pointer crossed them, made these report modals stutter while
+   scrolling.
+
+   The hover effect is CSS-only here so scrolling runs no JS, `contain` stops
+   a repaint inside one thumbnail from invalidating the rest, and the
+   img rules below let the browser decode off the main thread. */
+.photo-thumb {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid #cbd5e1;
+  cursor: pointer;
+  background-color: #f1f5f9;
+  contain: content;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.photo-thumb:hover,
+.photo-thumb:focus-visible {
+  transform: scale(1.05);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.photo-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
 /* --- Printing report modals ---
    Reports are rendered inside a modal, so printing the page directly would
    emit the whole dashboard behind the dimmed overlay. Marking the report
