@@ -285,22 +285,31 @@ export default function AdminDashboard({
 
   // Sorted view of the assigned/completed table. Records with no date yet
   // always sink to the bottom rather than sorting as an empty string.
-  const sortedActiveAndCompleted = [...activeAndCompleted].sort((a, b) => {
-    const dir = sortDir === 'asc' ? 1 : -1;
+  // Sorting by 'index' falls back to the order records were created in.
+  const sortedActiveAndCompleted = activeAndCompleted
+    .map((record, originalIndex) => ({ record, originalIndex }))
+    .sort((x, y) => {
+      const dir = sortDir === 'asc' ? 1 : -1;
+      const a = x.record;
+      const b = y.record;
 
-    if (sortBy === 'teacher') {
-      return (a.teacherName || '').localeCompare(b.teacherName || '', 'th') * dir;
-    }
-    if (sortBy === 'subject') {
-      return (a.subject || '').localeCompare(b.subject || '', 'th') * dir;
-    }
-    // date (with period as the tie-breaker within the same day)
-    if (!a.date && !b.date) return 0;
-    if (!a.date) return 1;
-    if (!b.date) return -1;
-    if (a.date !== b.date) return a.date.localeCompare(b.date) * dir;
-    return (a.time || '').localeCompare(b.time || '', 'th') * dir;
-  });
+      if (sortBy === 'index') {
+        return (x.originalIndex - y.originalIndex) * dir;
+      }
+      if (sortBy === 'teacher') {
+        return (a.teacherName || '').localeCompare(b.teacherName || '', 'th') * dir;
+      }
+      if (sortBy === 'subject') {
+        return (a.subject || '').localeCompare(b.subject || '', 'th') * dir;
+      }
+      // date (with period as the tie-breaker within the same day)
+      if (!a.date && !b.date) return 0;
+      if (!a.date) return 1;
+      if (!b.date) return -1;
+      if (a.date !== b.date) return a.date.localeCompare(b.date) * dir;
+      return (a.time || '').localeCompare(b.time || '', 'th') * dir;
+    })
+    .map(x => x.record);
 
   const sortIndicator = (column) => (sortBy === column ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ' ⇅');
 
@@ -1274,6 +1283,9 @@ export default function AdminDashboard({
                 <table>
                   <thead>
                     <tr>
+                      <th {...sortableHeaderProps('index')} style={{ ...sortableHeaderProps('index').style, textAlign: 'center', width: '1%' }}>
+                        ลำดับ{sortIndicator('index')}
+                      </th>
                       <th {...sortableHeaderProps('teacher')}>ครูผู้รับนิเทศ{sortIndicator('teacher')}</th>
                       <th {...sortableHeaderProps('subject')}>รายวิชา{sortIndicator('subject')}</th>
                       <th>ระดับชั้น/ห้องเรียน</th>
@@ -1286,8 +1298,9 @@ export default function AdminDashboard({
                     </tr>
                   </thead>
                   <tbody>
-                    {sortedActiveAndCompleted.map((req) => (
+                    {sortedActiveAndCompleted.map((req, rowIndex) => (
                       <tr key={req.id}>
+                        <td style={{ textAlign: 'center', color: 'var(--text-medium)', fontWeight: 600 }}>{rowIndex + 1}</td>
                         <td style={{ fontWeight: 600 }}>{req.teacherName}</td>
                         <td>{req.subject}</td>
                         <td>ชั้น ม.{req.grade.replace('ม.', '')}/{req.room}</td>
