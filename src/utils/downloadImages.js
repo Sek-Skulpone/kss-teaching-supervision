@@ -6,7 +6,8 @@ const EXTENSION_BY_MIME = {
   'image/jpg': 'jpg',
   'image/png': 'png',
   'image/webp': 'webp',
-  'image/gif': 'gif'
+  'image/gif': 'gif',
+  'application/pdf': 'pdf'
 };
 
 // Windows and macOS both reject these in file names, and Thai text is fine
@@ -25,29 +26,30 @@ const dataUrlToBlob = (dataUrl) => {
 };
 
 /**
- * Downloads every photo in `images` as `<baseName>_1.jpg`, `<baseName>_2.jpg`...
- * Returns how many were saved.
+ * Saves `files` ([{ dataUrl, name }], name without an extension) to the
+ * device, one file each. Returns how many were saved.
  *
- * The files are saved one at a time with a short gap: browsers treat a burst
- * of downloads from one click as suspicious, and Chrome only asks its
- * "allow multiple downloads?" question -- and then honours it -- when they
- * don't all arrive in the same tick.
+ * They go out one at a time with a short gap: browsers treat a burst of
+ * downloads from one click as suspicious, and Chrome only asks its "allow
+ * multiple downloads?" question -- and then honours it -- when they don't
+ * all arrive in the same tick.
  */
-export const downloadImages = async (images, baseName) => {
-  const list = (images || []).filter(img => typeof img === 'string' && img.startsWith('data:'));
+export const downloadFiles = async (files) => {
+  const list = (files || []).filter(
+    file => file && typeof file.dataUrl === 'string' && file.dataUrl.startsWith('data:')
+  );
   if (list.length === 0) return 0;
 
-  const prefix = safeFileName(baseName);
   const objectUrls = [];
 
   for (let i = 0; i < list.length; i++) {
-    const { blob, extension } = dataUrlToBlob(list[i]);
+    const { blob, extension } = dataUrlToBlob(list[i].dataUrl);
     const url = URL.createObjectURL(blob);
     objectUrls.push(url);
 
     const link = document.createElement('a');
     link.href = url;
-    link.download = `${prefix}_${i + 1}.${extension}`;
+    link.download = `${safeFileName(list[i].name)}.${extension}`;
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -61,3 +63,13 @@ export const downloadImages = async (images, baseName) => {
   setTimeout(() => objectUrls.forEach(url => URL.revokeObjectURL(url)), 60000);
   return list.length;
 };
+
+/** Saves photos as `<baseName>_1.jpg`, `<baseName>_2.jpg`... */
+export const downloadImages = async (images, baseName) =>
+  downloadFiles(imageFiles(images, baseName));
+
+/** Names a set of photos without saving them, for callers batching several. */
+export const imageFiles = (images, baseName, startAt = 1) =>
+  (images || [])
+    .filter(img => typeof img === 'string' && img.startsWith('data:'))
+    .map((dataUrl, i) => ({ dataUrl, name: `${baseName}_${startAt + i}` }));
