@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   BookOpen,
   ClipboardList,
@@ -21,7 +21,7 @@ import { resizeImage } from '../utils/imageResize';
 import { formatThaiDate } from '../utils/thaiDate';
 import { getStatusLabel } from '../utils/statusLabels';
 import { openOnePageReport, openPostLessonRecord } from '../utils/attachments';
-import { getOnePageReportFile, getPostLessonRecordFile } from '../db';
+import { getOnePageReportFile, getPostLessonRecordFile, getPlcLogImages, getEvaluationImages } from '../db';
 
 export default function TeacherDashboard({
   currentUser,
@@ -127,6 +127,10 @@ export default function TeacherDashboard({
   const [isResizingPlc, setIsResizingPlc] = useState(false);
   const [isSubmittingPlc, setIsSubmittingPlc] = useState(false);
   const [activePlcLightbox, setActivePlcLightbox] = useState(null);
+  // Photos are stored outside the records that reference them (see db.js),
+  // so the ones on screen are fetched on demand and kept here.
+  const [plcImagesByLog, setPlcImagesByLog] = useState({});
+  const [evalImagesBySupervision, setEvalImagesBySupervision] = useState({});
 
   // G. One-Page Report States
   const [selectedOnePageSupervision, setSelectedOnePageSupervision] = useState(null);
@@ -669,6 +673,54 @@ export default function TeacherDashboard({
   const myRequests = supervisions.filter(s => s.teacherId === currentUser.id && matchesSelectedYear(s));
   const myTermPlans = termPlans.filter(tp => tp.teacherId === currentUser.id);
   const myPlcLogs = plcLogs.filter(log => log.teacherId === currentUser.id && matchesSelectedYear(log));
+
+  // The four cycle cards show this teacher's own photos, so only their own
+  // logs are fetched -- not every log in the school.
+  const myPlcLogIdsKey = myPlcLogs.map(log => log.id).join(',');
+  useEffect(() => {
+    const ids = myPlcLogIdsKey ? myPlcLogIdsKey.split(',') : [];
+    if (ids.length === 0) return undefined;
+
+    let cancelled = false;
+    Promise.all(ids.map(id => getPlcLogImages(id).then(images => [id, images || []])))
+      .then(entries => {
+        if (cancelled) return;
+        setPlcImagesByLog(prev => ({ ...prev, ...Object.fromEntries(entries) }));
+      })
+      .catch(err => console.error('Could not load PLC photos:', err));
+    return () => { cancelled = true; };
+  }, [myPlcLogIdsKey]);
+
+  const plcImagesFor = (log) => {
+    if (!log) return [];
+    // Falls back to photos still stored inline on logs that predate the split.
+    return plcImagesByLog[log.id] || log.images || [];
+  };
+
+  // Cycle 3's photos come from the supervision's evaluations, which keep
+  // theirs in their own documents too.
+  const mySupervision = supervisions.find(s => s.teacherId === currentUser.id && matchesSelectedYear(s));
+  const mySupervisionId = mySupervision ? mySupervision.id : null;
+  useEffect(() => {
+    if (!mySupervisionId) return;
+    let cancelled = false;
+    getEvaluationImages(mySupervisionId)
+      .then(map => {
+        if (!cancelled) setEvalImagesBySupervision(prev => ({ ...prev, [mySupervisionId]: map || {} }));
+      })
+      .catch(err => console.error('Could not load evaluation photos:', err));
+    return () => { cancelled = true; };
+  }, [mySupervisionId]);
+
+  const evaluationImagesFor = (sup) => {
+    if (!sup) return [];
+    const stored = evalImagesBySupervision[sup.id] || {};
+    const out = [];
+    Object.entries(sup.evaluations || {}).forEach(([supervisorId, ev]) => {
+      out.push(...(stored[supervisorId] || ev.images || []));
+    });
+    return out;
+  };
 
   // Supervisions of other teachers open for volunteering
   const openForVolunteering = supervisions.filter(
@@ -1325,16 +1377,9 @@ export default function TeacherDashboard({
                 };
               }
               
-              const cycle3Images = [];
-              if (cycle3Supervision && cycle3Supervision.evaluations) {
-                Object.values(cycle3Supervision.evaluations).forEach(ev => {
-                  if (ev.images && Array.isArray(ev.images)) {
-                    cycle3Images.push(...ev.images);
-                  }
-                });
-              }
-
-              const imagesToShow = cycle.cycleNum === 3 ? cycle3Images : (log ? (log.images || []) : []);
+              const imagesToShow = cycle.cycleNum === 3
+                ? evaluationImagesFor(cycle3Supervision)
+                : plcImagesFor(log);
 
               return (
                 <div key={cycle.cycleNum} className="card" style={{ margin: 0, display: 'flex', flexDirection: 'column', height: '100%', justifyContent: 'space-between', border: '1px solid var(--border-color)', position: 'relative' }}>
@@ -1644,7 +1689,7 @@ export default function TeacherDashboard({
                             }
 
                             setPlcOutcome(log.outcome || (Number(cycle.cycleNum) === 4 ? 'สะท้อนผลการจัดกิจกรรมการเรียนรู้และนำเสนอแผนการจัดการเรียนรู้ที่ได้รับการพัฒนาปรับปรุงเรียบร้อยแล้ว' : ''));
-                            setPlcImages(log.images || []);
+                            setPlcImages(plcImagesFor(log));
                             setPlcRevisedPlanUrl(log.revisedPlanUrl || '');
                             setIsPlcModalOpen(true);
                           }}

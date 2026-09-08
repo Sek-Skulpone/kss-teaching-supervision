@@ -6,7 +6,7 @@ import AvatarEditorModal from './AvatarEditorModal';
 import { formatThaiDate } from '../utils/thaiDate';
 import { getStatusLabel } from '../utils/statusLabels';
 import { todayDateString, toLocalDateString } from '../utils/localDate';
-import { getEvaluationImages } from '../db';
+import { getEvaluationImages, getPlcLogImages } from '../db';
 import { openOnePageReport } from '../utils/attachments';
 
 const PERIODS_LIST = [
@@ -70,6 +70,9 @@ export default function AdminDashboard({
   // db.js EVAL_IMG_PREFIX) and pulled in only when a report that shows them
   // is opened. Keyed by supervision id.
   const [evalImagesBySupervision, setEvalImagesBySupervision] = useState({});
+  // PLC photos live outside the log documents (see db.js), so only the ones
+  // on screen are fetched instead of every photo in the school.
+  const [plcImagesByLog, setPlcImagesByLog] = useState({});
   const [activePlcLightboxImage, setActivePlcLightboxImage] = useState(null);
 
   // States for scheduling date/time
@@ -176,6 +179,35 @@ export default function AdminDashboard({
       .catch(err => console.error('Could not load evaluation images:', err));
     return () => { cancelled = true; };
   }, [plcReportSupervisionId, evalImagesBySupervision]);
+
+  // The logs whose photos are actually on screen: the PLC report modal's
+  // four cycles, the individual report's cycle 4, and the open log detail.
+  const visiblePlcLogIdsKey = [
+    ...(selectedPlcTeacher
+      ? plcLogs.filter(log => log.teacherId === selectedPlcTeacher.id && matchesYear(log, selectedAdminPlcYear)).map(log => log.id)
+      : []),
+    ...(selectedIndividualTeacherId
+      ? plcLogs.filter(log => log.teacherId === selectedIndividualTeacherId && Number(log.cycle) === 4 && matchesYear(log, selectedIndividualYear)).map(log => log.id)
+      : []),
+    ...(selectedPlcLogDetail ? [selectedPlcLogDetail.id] : [])
+  ].filter(Boolean).join(',');
+
+  useEffect(() => {
+    const ids = [...new Set(visiblePlcLogIdsKey ? visiblePlcLogIdsKey.split(',') : [])];
+    if (ids.length === 0) return undefined;
+
+    let cancelled = false;
+    Promise.all(ids.map(id => getPlcLogImages(id).then(images => [id, images || []])))
+      .then(entries => {
+        if (cancelled) return;
+        setPlcImagesByLog(prev => ({ ...prev, ...Object.fromEntries(entries) }));
+      })
+      .catch(err => console.error('Could not load PLC photos:', err));
+    return () => { cancelled = true; };
+  }, [visiblePlcLogIdsKey]);
+
+  // Falls back to photos still stored inline on logs that predate the split.
+  const plcImagesFor = (log) => (log ? (plcImagesByLog[log.id] || log.images || []) : []);
 
   // Committee picker: tick as many teachers as needed, then appoint them all
   // with one button press (and one write) instead of one per person.
@@ -2856,11 +2888,11 @@ export default function AdminDashboard({
                       </div>
 
                       {/* C. Cycle 4 PLC Images */}
-                      {cycle4Log?.images && cycle4Log.images.length > 0 && (
+                      {plcImagesFor(cycle4Log).length > 0 && (
                         <div style={{ borderTop: '1px dashed #e2e8f0', paddingTop: '0.5rem' }}>
                           <strong>📷 รูปภาพหลักฐานกิจกรรม PLC:</strong>
                           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px', marginTop: '0.4rem' }}>
-                            {cycle4Log.images.map((img, idx) => (
+                            {plcImagesFor(cycle4Log).map((img, idx) => (
                               <div
                                 key={idx}
                                 className="photo-thumb"
@@ -2911,7 +2943,7 @@ export default function AdminDashboard({
                     { cycleNum: 4, name: 'วงรอบที่ 4: สะท้อนผล ขยายผล และยกระดับคุณภาพ (Reflection & Scaling Up)' }
                   ].map(cycle => {
                     const log = plcLogs.find(l => l.teacherId === selectedPlcTeacher.id && Number(l.cycle) === cycle.cycleNum && matchesYear(l, selectedAdminPlcYear));
-                    const imagesToShow = cycle.cycleNum === 3 ? cycle3Images : (log ? log.images : []);
+                    const imagesToShow = cycle.cycleNum === 3 ? cycle3Images : plcImagesFor(log);
                     
                     return (
                       <div key={cycle.cycleNum} style={{ border: '1px solid #eee', borderRadius: '6px', overflow: 'hidden' }}>
@@ -3064,9 +3096,7 @@ export default function AdminDashboard({
                 if (Number(selectedPlcLogDetail.cycle) === 3) {
                   detailImages.push(...evaluationImagesFor(sup));
                 } else {
-                  if (selectedPlcLogDetail.images) {
-                    detailImages.push(...selectedPlcLogDetail.images);
-                  }
+                  detailImages.push(...plcImagesFor(selectedPlcLogDetail));
                 }
 
                 return (

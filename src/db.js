@@ -1305,6 +1305,74 @@ const migrateLegacyPlcLogs = async () => {
   await setDoc(markerRef, { done: true, migratedAt: new Date().toISOString(), count: legacyLogs.length });
 };
 
+// PLC photos are stored OUTSIDE the log document, one document per log at
+// `system_db/plcimg_<logId>` shaped as { logId, images: [dataUrl, ...] }.
+//
+// The logs themselves are already one document each, so this is not about a
+// ceiling -- it is about what every visit costs. getPlcLogs() reads the
+// whole collection to build the PLC screens, and the photos are ~99% of it:
+// measured on live data, 15 logs came to 3.5MB, and one log alone was
+// 415KB. With 33 teachers x 4 cycles a year that reaches ~25MB downloaded
+// per visit within a year, most of it never looked at. Keeping only
+// `imageCount` in the log leaves the list at about 1KB per log, and the
+// photos are fetched for the log actually being viewed.
+const PLC_IMG_PREFIX = 'plcimg_';
+const plcImgDocId = (logId) => `${PLC_IMG_PREFIX}${logId}`;
+
+const writePlcLogImages = async (logId, images) => {
+  const ref = doc(db, 'system_db', plcImgDocId(logId));
+
+  if (!images || images.length === 0) {
+    await deleteDoc(ref);
+    return;
+  }
+  const payload = { logId, images };
+  assertDocumentFits(payload, 'รูปภาพประกอบบันทึก PLC');
+  await setDoc(ref, payload);
+};
+
+/** Returns one PLC log's photos. Fetched only when a log is opened. */
+export const getPlcLogImages = async (logId) => {
+  if (!logId || !isFirebaseInitialized) return [];
+  try {
+    const snap = await getDoc(doc(db, 'system_db', plcImgDocId(logId)));
+    return snap.exists() ? (snap.data().images || []) : [];
+  } catch (e) {
+    console.warn('Failed to load PLC log images:', e);
+    return [];
+  }
+};
+
+// One-time move of photos still stored inside the log documents. A marker
+// keeps it to a single run across all clients. Each log is written photos
+// first, then slimmed down, so a failure part-way leaves the photos
+// readable from both places rather than from neither.
+const PLC_IMG_MIGRATION_DOC = ['system_db', 'plc_images_migration'];
+const migrateInlinePlcImages = async (logs) => {
+  const markerRef = doc(db, ...PLC_IMG_MIGRATION_DOC);
+  const markerSnap = await getDoc(markerRef);
+  if (markerSnap.exists() && markerSnap.data().done) return logs;
+
+  const slimmed = [];
+  let moved = 0;
+  for (const log of logs) {
+    if (!Array.isArray(log.images) || log.images.length === 0) {
+      slimmed.push(log);
+      continue;
+    }
+    const { images, ...rest } = log;
+    const slimLog = { ...rest, imageCount: images.length };
+    await writePlcLogImages(log.id, images);
+    await setDoc(doc(db, 'system_db', plcDocId(log.id)), slimLog);
+    slimmed.push(slimLog);
+    moved += 1;
+  }
+
+  await setDoc(markerRef, { done: true, migratedAt: new Date().toISOString(), moved });
+  if (moved > 0) console.log(`Moved photos out of ${moved} PLC log(s).`);
+  return slimmed;
+};
+
 export const getPlcLogs = async () => {
   if (!isFirebaseInitialized) return readLocalPlcLogs();
 
@@ -1319,7 +1387,14 @@ export const getPlcLogs = async () => {
       where(documentId(), '>=', PLC_DOC_PREFIX),
       where(documentId(), '<=', `${PLC_DOC_PREFIX}`)
     ));
-    const logs = snap.docs.map(d => d.data());
+    let logs = snap.docs.map(d => d.data());
+    try {
+      logs = await migrateInlinePlcImages(logs);
+    } catch (e) {
+      // Non-fatal: the photos are still readable inline, the read just
+      // stays heavy. Retried on the next load.
+      console.warn('Could not move inline PLC photos:', e);
+    }
     dbCache.plcLogs = logs;
     cachePlcLogsLocally(logs);
     return logs;
@@ -1355,12 +1430,17 @@ export const addPlcLog = async (logData) => {
   }
 
   try {
-    assertPlcLogFits(newLog);
-    await setDoc(doc(db, 'system_db', plcDocId(newLog.id)), newLog);
-    const logs = [...(dbCache.plcLogs || readLocalPlcLogs()), newLog];
+    // Photos go to their own document; the log keeps only the count.
+    const { images = [], ...rest } = newLog;
+    const storedLog = { ...rest, imageCount: images.length };
+    await writePlcLogImages(newLog.id, images);
+    assertPlcLogFits(storedLog);
+    await setDoc(doc(db, 'system_db', plcDocId(newLog.id)), storedLog);
+
+    const logs = [...(dbCache.plcLogs || readLocalPlcLogs()), storedLog];
     dbCache.plcLogs = logs;
     cachePlcLogsLocally(logs);
-    return newLog;
+    return storedLog;
   } catch (e) {
     console.error('Failed to add PLC log:', e);
     return null;
@@ -1369,7 +1449,16 @@ export const addPlcLog = async (logData) => {
 
 export const updatePlcLog = async (logId, updatedFields) => {
   const applyLocally = (logs) =>
-    logs.map(log => (log.id === logId ? { ...log, ...updatedFields, updatedAt: new Date().toISOString() } : log));
+    logs.map(log => {
+      if (log.id !== logId) return log;
+      const next = { ...log, ...updatedFields, updatedAt: new Date().toISOString() };
+      if (!isFirebaseInitialized) return next;
+      // Online, the cached list mirrors what is stored: counts, not photos.
+      const { images, ...rest } = next;
+      return 'images' in updatedFields
+        ? { ...rest, imageCount: (images || []).length }
+        : rest;
+    });
 
   if (!isFirebaseInitialized) {
     const logs = applyLocally(readLocalPlcLogs());
@@ -1383,7 +1472,17 @@ export const updatePlcLog = async (logId, updatedFields) => {
     const snap = await getDoc(ref);
     if (!snap.exists()) return false;
 
-    const updated = { ...snap.data(), ...updatedFields, updatedAt: new Date().toISOString() };
+    const merged = { ...snap.data(), ...updatedFields, updatedAt: new Date().toISOString() };
+    // Photos live in their own document -- write them there and keep only
+    // the count on the log itself. An update that doesn't mention images
+    // leaves the stored photos alone.
+    const { images, ...rest } = merged;
+    let updated = rest;
+    if ('images' in updatedFields) {
+      const list = images || [];
+      await writePlcLogImages(logId, list);
+      updated = { ...rest, imageCount: list.length };
+    }
     assertPlcLogFits(updated);
     await setDoc(ref, updated);
 
@@ -1409,6 +1508,11 @@ export const deletePlcLog = async (logId) => {
 
   try {
     await deleteDoc(doc(db, 'system_db', plcDocId(logId)));
+    try {
+      await writePlcLogImages(logId, []);
+    } catch (e) {
+      console.warn('PLC log deleted but its photos could not be removed:', e);
+    }
     const logs = removeLocally(dbCache.plcLogs || readLocalPlcLogs());
     dbCache.plcLogs = logs;
     cachePlcLogsLocally(logs);
