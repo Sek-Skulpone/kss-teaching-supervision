@@ -22,6 +22,7 @@ import EvaluationSummaryModal from './components/EvaluationSummaryModal';
 import { formatThaiDateFull } from './utils/thaiDate';
 import { getStatusLabel } from './utils/statusLabels';
 import { todayDateString } from './utils/localDate';
+import { openOnePageReport } from './utils/onePageReport';
 import AvatarEditorModal from './components/AvatarEditorModal';
 import {
   getUsers,
@@ -1110,13 +1111,7 @@ export default function App() {
                         type="button"
                         className="btn btn-secondary"
                         style={{ width: '100%', padding: '0.5rem', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}
-                        onClick={() => {
-                          if (selectedEvent.onePageReport.type === 'image') {
-                            setActiveOnePageLightbox(selectedEvent.onePageReport.fileData);
-                          } else {
-                            window.open(selectedEvent.onePageReport.type === 'link' ? selectedEvent.onePageReport.fileUrl : selectedEvent.onePageReport.fileData, '_blank');
-                          }
-                        }}
+                        onClick={() => openOnePageReport(selectedEvent, setActiveOnePageLightbox)}
                       >
                         📄 เปิดดูรายงานนิเทศหน้าเดียว
                       </button>

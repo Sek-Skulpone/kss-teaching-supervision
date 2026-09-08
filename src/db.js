@@ -315,13 +315,45 @@ const migrateInlineEvaluationImages = async (supervisions) => {
   }
 };
 
+// Moves One-Page report files that older records stored inline out into
+// their own documents (see ONE_PAGE_PREFIX below). Runs at most once per
+// page session, and only writes if inline files are still present.
+let inlineOnePageChecked = false;
+const migrateInlineOnePageReports = async (supervisions) => {
+  if (inlineOnePageChecked || !isFirebaseInitialized) return false;
+  inlineOnePageChecked = true;
+
+  const needing = supervisions.filter(s => s.onePageReport && s.onePageReport.fileData);
+  if (needing.length === 0) return false;
+
+  try {
+    for (const sup of needing) {
+      await writeOnePageReportFile(sup.id, sup.onePageReport.fileData);
+    }
+
+    // Strip the now-duplicated file payloads from the supervisions document.
+    await mutateCollection('supervisions', (list) =>
+      list.map(s => (needing.some(n => n.id === s.id) && s.onePageReport
+        ? { ...s, onePageReport: { ...s.onePageReport, fileData: null } }
+        : s))
+    );
+    console.log(`Moved ${needing.length} inline One-Page report file(s) out of the supervisions document.`);
+    return true;
+  } catch (e) {
+    // Non-fatal: the app still works with the files inline, it just stays large.
+    console.warn('Could not move inline One-Page report files:', e);
+    return false;
+  }
+};
+
 export const getSupervisions = async () => {
   const dbData = await ensureDBLoaded();
   const movedInline = await migrateInlineEvaluationImages(dbData.supervisions);
   // Runs after the inline migration so photos it just wrote into the older
   // per-supervision documents get split out in the same pass.
   await migrateLegacyEvalImageDocs(dbData.supervisions);
-  if (movedInline) {
+  const movedOnePage = await migrateInlineOnePageReports(dbData.supervisions);
+  if (movedInline || movedOnePage) {
     const refreshed = await ensureDBLoaded(true);
     return refreshed.supervisions;
   }
@@ -348,8 +380,35 @@ export const addSupervision = async (supervision) => {
 };
 
 export const updateSupervision = async (supervisionId, updatedFields) => {
+  let fields = updatedFields;
+
+  // The One-Page report's file goes into its own document; only the
+  // metadata (type/link/uploadedAt) stays in the shared supervisions
+  // document. See ONE_PAGE_PREFIX below for why.
+  // Offline mode keeps it inline -- localStorage is the datastore there and
+  // has no companion document to read the file back out of.
+  if (isFirebaseInitialized && 'onePageReport' in updatedFields) {
+    const report = updatedFields.onePageReport;
+    // A report that is being removed outright, or replaced by a link, has no
+    // file any more -- anything else without a `fileData` is a metadata-only
+    // update, and must leave the stored file where it is rather than wipe it.
+    const clearsFile = !report || report.type === 'link';
+    if (clearsFile || report.fileData) {
+      try {
+        await writeOnePageReportFile(supervisionId, clearsFile ? null : report.fileData);
+      } catch (e) {
+        console.error('Failed to save the One-Page report file:', e);
+        return false;
+      }
+    }
+    fields = {
+      ...updatedFields,
+      onePageReport: report ? { ...report, fileData: null } : null
+    };
+  }
+
   const { success } = await mutateCollection('supervisions', (list) =>
-    list.map(s => (s.id === supervisionId ? { ...s, ...updatedFields } : s))
+    list.map(s => (s.id === supervisionId ? { ...s, ...fields } : s))
   );
   return success;
 };
@@ -365,6 +424,11 @@ export const deleteSupervision = async (supervisionId) => {
       await deleteEvaluationImageDocs(supervisionId);
     } catch (e) {
       console.warn('Supervision deleted but its evaluation images could not be removed:', e);
+    }
+    try {
+      await writeOnePageReportFile(supervisionId, null);
+    } catch (e) {
+      console.warn('Supervision deleted but its One-Page report file could not be removed:', e);
     }
   }
   localStorage.removeItem(`ks_evalimg_${supervisionId}`);
@@ -747,6 +811,65 @@ export const submitPostTeachingRecord = async (supervisionId, record) => {
       : s))
   );
   return success;
+};
+
+// The One-Page report's file (a base64 image, or a PDF of up to 300KB) is
+// stored OUTSIDE the supervisions document, one document per supervision at
+// `system_db/onepage_<supervisionId>` shaped as { supervisionId, fileData }.
+// Only { type, fileUrl, uploadedAt } stays inline, which is all the lists
+// and badges need to say whether a report exists.
+//
+// Measured on live data: the supervisions document stood at 256KB of the
+// 900KB cap for 27 records, and 123KB of that -- nearly half -- was a
+// SINGLE teacher's One-Page image. Every teacher is expected to upload one
+// per year (33 teachers), so about seven more uploads would have taken the
+// document past the cap and blocked every save in the system, the same way
+// the evaluation photos did before they were split out.
+// Load cost matters too: this document is fetched on every page view to
+// draw the calendar, so files kept inline were downloaded by everyone just
+// to see the month grid. Files are now read on demand by
+// getOnePageReportFile() when someone actually opens a report.
+const ONE_PAGE_PREFIX = 'onepage_';
+const onePageDocId = (supervisionId) => `${ONE_PAGE_PREFIX}${supervisionId}`;
+
+// Writes (or, with a falsy `fileData`, removes) one supervision's One-Page
+// file document.
+const writeOnePageReportFile = async (supervisionId, fileData) => {
+  const ref = doc(db, 'system_db', onePageDocId(supervisionId));
+
+  if (!fileData) {
+    await deleteDoc(ref);
+    return;
+  }
+
+  const payload = { supervisionId, fileData };
+  const size = byteSizeOf(payload);
+  if (size > MAX_DOC_BYTES) {
+    throw new Error(
+      `ไฟล์รายงานนิเทศหน้าเดียวมีขนาดใหญ่เกินไป ` +
+      `(${(size / 1024).toFixed(0)}KB จากสูงสุด ${(MAX_DOC_BYTES / 1024).toFixed(0)}KB) ` +
+      `กรุณาลดขนาดไฟล์แล้วบันทึกใหม่อีกครั้ง`
+    );
+  }
+  await setDoc(ref, payload);
+};
+
+/** Returns the One-Page report's base64 file for one supervision, or null. */
+export const getOnePageReportFile = async (supervision) => {
+  const report = supervision && supervision.onePageReport;
+  if (!report || report.type === 'link') return null;
+  // Records written before the split -- and everything saved in offline
+  // mode -- still carry the file inline.
+  if (report.fileData) return report.fileData;
+  if (!isFirebaseInitialized) return null;
+
+  try {
+    const snap = await getDoc(doc(db, 'system_db', onePageDocId(supervision.id)));
+    return snap.exists() ? (snap.data().fileData || null) : null;
+  } catch (e) {
+    console.warn('Failed to load the One-Page report file:', e);
+    return null;
+  }
 };
 
 /* ==========================================================================

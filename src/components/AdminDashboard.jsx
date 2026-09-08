@@ -7,6 +7,7 @@ import { formatThaiDate } from '../utils/thaiDate';
 import { getStatusLabel } from '../utils/statusLabels';
 import { todayDateString, toLocalDateString } from '../utils/localDate';
 import { getEvaluationImages } from '../db';
+import { openOnePageReport } from '../utils/onePageReport';
 
 const PERIODS_LIST = [
   'คาบที่ 1 (08.30 - 09.20 น.)',
@@ -1509,13 +1510,7 @@ export default function AdminDashboard({
                               type="button"
                               className="btn btn-outline"
                               style={{ padding: '0.25rem 0.5rem', fontSize: '11px', display: 'inline-flex', gap: '0.25rem', alignItems: 'center' }}
-                              onClick={() => {
-                                if (req.onePageReport.type === 'image') {
-                                  setActivePlcLightboxImage(req.onePageReport.fileData);
-                                } else {
-                                  window.open(req.onePageReport.type === 'link' ? req.onePageReport.fileUrl : req.onePageReport.fileData, '_blank');
-                                }
-                              }}
+                              onClick={() => openOnePageReport(req, setActivePlcLightboxImage)}
                             >
                               📄 เปิดดูรายงาน
                             </button>
@@ -2414,13 +2409,7 @@ export default function AdminDashboard({
                                     type="button"
                                     className="btn btn-outline"
                                     style={{ padding: '0.25rem 0.5rem', fontSize: '11px', display: 'inline-flex', gap: '0.25rem', alignItems: 'center' }}
-                                    onClick={() => {
-                                      if (s.onePageReport.type === 'image') {
-                                        setActivePlcLightboxImage(s.onePageReport.fileData);
-                                      } else {
-                                        window.open(s.onePageReport.type === 'link' ? s.onePageReport.fileUrl : s.onePageReport.fileData, '_blank');
-                                      }
-                                    }}
+                                    onClick={() => openOnePageReport(s, setActivePlcLightboxImage)}
                                   >
                                     📄 เปิดดูรายงาน
                                   </button>
@@ -2856,13 +2845,7 @@ export default function AdminDashboard({
                               type="button"
                               className="btn btn-outline"
                               style={{ width: '100%', padding: '0.3rem', fontSize: '11px', borderColor: 'var(--primary-color)', color: 'var(--primary-color)', backgroundColor: 'white' }}
-                              onClick={() => {
-                                if (sup.onePageReport.type === 'image') {
-                                  setActivePlcLightboxImage(sup.onePageReport.fileData);
-                                } else {
-                                  window.open(sup.onePageReport.type === 'link' ? sup.onePageReport.fileUrl : sup.onePageReport.fileData, '_blank');
-                                }
-                              }}
+                              onClick={() => openOnePageReport(sup, setActivePlcLightboxImage)}
                             >
                               📄 เปิดดูเอกสาร One Page ({sup.onePageReport.type === 'link' ? 'ลิงก์' : 'ไฟล์แนบ'})
                             </button>

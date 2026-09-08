@@ -20,6 +20,8 @@ import EvaluationSummaryModal from './EvaluationSummaryModal';
 import { resizeImage } from '../utils/imageResize';
 import { formatThaiDate } from '../utils/thaiDate';
 import { getStatusLabel } from '../utils/statusLabels';
+import { openOnePageReport } from '../utils/onePageReport';
+import { getOnePageReportFile } from '../db';
 
 export default function TeacherDashboard({
   currentUser,
@@ -252,6 +254,32 @@ export default function TeacherDashboard({
     } catch (err) {
       console.error(err);
       setOnePageError('เกิดข้อผิดพลาดในการประมวลผลไฟล์');
+    } finally {
+      setIsProcessingOnePage(false);
+    }
+  };
+
+  // Re-opens the upload form on an existing report. The file itself is
+  // kept in its own Firestore document (see db.js), so it has to be fetched
+  // back before the form can show it as the current attachment.
+  const handleOpenOnePageEditor = async (supervision) => {
+    const report = supervision.onePageReport;
+    setSelectedOnePageSupervision(supervision);
+    setOnePageType(report.type);
+    setOnePageLink(report.fileUrl || '');
+    setOnePageFile('');
+    setOnePageError('');
+    setIsOnePageModalOpen(true);
+
+    if (report.type === 'link') return;
+
+    setIsProcessingOnePage(true);
+    try {
+      const fileData = await getOnePageReportFile(supervision);
+      setOnePageFile(fileData || '');
+      if (!fileData) {
+        setOnePageError('ไม่สามารถโหลดไฟล์เดิมได้ กรุณาเลือกไฟล์ใหม่อีกครั้ง');
+      }
     } finally {
       setIsProcessingOnePage(false);
     }
@@ -1457,13 +1485,7 @@ export default function TeacherDashboard({
                                     type="button"
                                     className="btn btn-outline"
                                     style={{ flex: 1, padding: '0.35rem', fontSize: '11px', borderColor: 'var(--primary-color)', color: 'var(--primary-color)', backgroundColor: 'white' }}
-                                    onClick={() => {
-                                      if (cycle3Supervision.onePageReport.type === 'image') {
-                                        setActivePlcLightbox(cycle3Supervision.onePageReport.fileData);
-                                      } else {
-                                        window.open(cycle3Supervision.onePageReport.type === 'link' ? cycle3Supervision.onePageReport.fileUrl : cycle3Supervision.onePageReport.fileData, '_blank');
-                                      }
-                                    }}
+                                    onClick={() => openOnePageReport(cycle3Supervision, setActivePlcLightbox)}
                                   >
                                     เปิดดูรายงาน
                                   </button>
@@ -1471,13 +1493,7 @@ export default function TeacherDashboard({
                                     type="button"
                                     className="btn btn-outline"
                                     style={{ flex: 1, padding: '0.35rem', fontSize: '11px', backgroundColor: 'white' }}
-                                    onClick={() => {
-                                      setSelectedOnePageSupervision(cycle3Supervision);
-                                      setOnePageType(cycle3Supervision.onePageReport.type);
-                                      setOnePageFile(cycle3Supervision.onePageReport.fileData || '');
-                                      setOnePageLink(cycle3Supervision.onePageReport.fileUrl || '');
-                                      setIsOnePageModalOpen(true);
-                                    }}
+                                    onClick={() => handleOpenOnePageEditor(cycle3Supervision)}
                                   >
                                     แก้ไขไฟล์
                                   </button>
