@@ -11,18 +11,40 @@ const EXTENSION_BY_MIME = {
 };
 
 // Windows and macOS both reject these in file names, and Thai text is fine
-// to keep as-is.
-const safeFileName = (name) =>
+// to keep as-is. One path segment at a time -- "/" is a separator between
+// names, never part of one.
+export const safeFileName = (name) =>
   String(name || 'ภาพ').replace(/[\\/:*?"<>|]+/g, '').replace(/\s+/g, '_').slice(0, 80);
 
-const dataUrlToBlob = (dataUrl) => {
+export const isStoredFile = (dataUrl) => typeof dataUrl === 'string' && dataUrl.startsWith('data:');
+
+/** Splits a stored `data:` URL into the parts a file needs. */
+export const parseDataUrl = (dataUrl) => {
   const [header, base64] = dataUrl.split(',');
   const matched = header.match(/data:([^;]+)/);
   const mime = matched ? matched[1] : 'image/jpeg';
+  return { base64, mime, extension: EXTENSION_BY_MIME[mime] || 'jpg' };
+};
+
+const dataUrlToBlob = (dataUrl) => {
+  const { base64, mime, extension } = parseDataUrl(dataUrl);
   const binary = atob(base64);
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return { blob: new Blob([bytes], { type: mime }), extension: EXTENSION_BY_MIME[mime] || 'jpg' };
+  return { blob: new Blob([bytes], { type: mime }), extension };
+};
+
+/** Hands one finished blob to the browser to save. */
+export const saveBlob = (blob, fileName) => {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  // Freed once the browser has had time to start the download.
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
 };
 
 /**
@@ -35,32 +57,17 @@ const dataUrlToBlob = (dataUrl) => {
  * all arrive in the same tick.
  */
 export const downloadFiles = async (files) => {
-  const list = (files || []).filter(
-    file => file && typeof file.dataUrl === 'string' && file.dataUrl.startsWith('data:')
-  );
+  const list = (files || []).filter(file => file && isStoredFile(file.dataUrl));
   if (list.length === 0) return 0;
-
-  const objectUrls = [];
 
   for (let i = 0; i < list.length; i++) {
     const { blob, extension } = dataUrlToBlob(list[i].dataUrl);
-    const url = URL.createObjectURL(blob);
-    objectUrls.push(url);
-
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${safeFileName(list[i].name)}.${extension}`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
+    saveBlob(blob, `${safeFileName(list[i].name)}.${extension}`);
 
     if (i < list.length - 1) {
       await new Promise(resolve => setTimeout(resolve, 300));
     }
   }
-
-  // Freed once the browser has had time to start every download.
-  setTimeout(() => objectUrls.forEach(url => URL.revokeObjectURL(url)), 60000);
   return list.length;
 };
 
@@ -71,5 +78,5 @@ export const downloadImages = async (images, baseName) =>
 /** Names a set of photos without saving them, for callers batching several. */
 export const imageFiles = (images, baseName, startAt = 1) =>
   (images || [])
-    .filter(img => typeof img === 'string' && img.startsWith('data:'))
+    .filter(isStoredFile)
     .map((dataUrl, i) => ({ dataUrl, name: `${baseName}_${startAt + i}` }));

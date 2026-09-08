@@ -7,7 +7,8 @@ import { formatThaiDate } from '../utils/thaiDate';
 import { getStatusLabel } from '../utils/statusLabels';
 import { todayDateString, toLocalDateString } from '../utils/localDate';
 import { getEvaluationImages, getPlcLogImages, getOnePageReportFile } from '../db';
-import { downloadImages, downloadFiles, imageFiles } from '../utils/downloadImages';
+import { downloadImages, imageFiles } from '../utils/downloadImages';
+import { downloadZip } from '../utils/zipDownload';
 import { openOnePageReport } from '../utils/attachments';
 
 const PERIODS_LIST = [
@@ -215,11 +216,11 @@ export default function AdminDashboard({
   // Whole-year exports for the admin: every teacher's cycle-3 photos, or
   // every teacher's One-Page report file, for the selected academic year.
   //
-  // Both kinds of file live outside the supervisions document (see db.js),
-  // so they are fetched one teacher at a time and saved before moving on --
-  // a year of photos is tens of MB, and holding all of it in memory first is
-  // what would make this fall over on a phone.
-  const runYearDownload = async ({ label, collect, noteFor }) => {
+  // A year is ~130 photos, so they are delivered as one ZIP with a folder
+  // per teacher rather than as 130 separate downloads. Both kinds of file
+  // live outside the supervisions document (see db.js), so they are fetched
+  // one teacher at a time, which is also what the progress counter follows.
+  const runYearDownload = async ({ label, zipName, collect, noteFor }) => {
     if (yearDownload) return;
 
     const year = selectedAdminPlcYear;
@@ -230,25 +231,34 @@ export default function AdminDashboard({
     }
     if (!window.confirm(
       `ดาวน์โหลด${label}ของครูทุกท่าน ปีการศึกษา ${year} (${yearSups.length} รายการ)\n\n` +
-      'ไฟล์จะถูกบันทึกทีละไฟล์และอาจใช้เวลาสักครู่ ' +
-      'หากเบราว์เซอร์ถามว่าจะดาวน์โหลดหลายไฟล์หรือไม่ กรุณากด "อนุญาต"'
+      'ระบบจะรวมไฟล์ทั้งหมดเป็นไฟล์ ZIP ไฟล์เดียว แยกโฟลเดอร์ตามรายชื่อครู ' +
+      'อาจใช้เวลาสักครู่ กรุณาอย่าปิดหน้านี้จนกว่าจะเสร็จ'
     )) return;
 
-    setYearDownload({ done: 0, total: yearSups.length });
-    let saved = 0;
+    setYearDownload({ done: 0, total: yearSups.length, stage: 'fetch' });
+    const entries = [];
 
     try {
       for (let i = 0; i < yearSups.length; i++) {
-        saved += await downloadFiles(await collect(yearSups[i], year));
-        setYearDownload({ done: i + 1, total: yearSups.length });
+        entries.push(...await collect(yearSups[i], year));
+        setYearDownload({ done: i + 1, total: yearSups.length, stage: 'fetch' });
       }
 
       const note = noteFor ? noteFor(yearSups) : '';
-      alert(
-        saved === 0
-          ? `ไม่พบ${label}ของปีการศึกษา ${year}${note}`
-          : `ดาวน์โหลด${label} ${saved} ไฟล์ เรียบร้อยแล้ว${note}`
+      if (entries.length === 0) {
+        alert(`ไม่พบ${label}ของปีการศึกษา ${year}${note}`);
+        return;
+      }
+
+      setYearDownload({ done: 0, total: 100, stage: 'zip' });
+      const saved = await downloadZip(
+        entries,
+        `${zipName}_ปีการศึกษา${year}`,
+        percent => setYearDownload({ done: percent, total: 100, stage: 'zip' })
       );
+
+      const folders = new Set(entries.map(entry => entry.folder)).size;
+      alert(`ดาวน์โหลด${label} ${saved} ไฟล์ จากครู ${folders} ท่าน เรียบร้อยแล้ว${note}`);
     } catch (e) {
       console.error('Could not download the whole year:', e);
       alert('เกิดข้อผิดพลาดระหว่างดาวน์โหลด กรุณาลองใหม่อีกครั้ง');
@@ -257,28 +267,34 @@ export default function AdminDashboard({
     }
   };
 
-  const teacherFileName = (sup) => sup.teacherName || 'ไม่ระบุชื่อ';
+  const yearDownloadLabel = ({ done, total, stage }) =>
+    (stage === 'zip' ? `กำลังรวมไฟล์ ZIP ${done}%` : `กำลังเตรียมไฟล์ ${done}/${total} ...`);
+
+  const teacherFolderName = (sup) => sup.teacherName || 'ไม่ระบุชื่อ';
 
   const handleDownloadYearCycle3Photos = () => runYearDownload({
     label: 'ภาพ PLC วงรอบที่ 3',
+    zipName: 'ภาพPLCวงรอบที่3',
     collect: async (sup, year) => {
       const stored = await getEvaluationImages(sup.id);
       const images = [];
       Object.entries(sup.evaluations || {}).forEach(([supervisorId, ev]) => {
         images.push(...((stored || {})[supervisorId] || ev.images || []));
       });
-      return imageFiles(images, `PLC_วงรอบที่3_${teacherFileName(sup)}_${year}`);
+      return imageFiles(images, `PLC_วงรอบที่3_${year}`)
+        .map(file => ({ ...file, folder: teacherFolderName(sup) }));
     }
   });
 
   const handleDownloadYearOnePageReports = () => runYearDownload({
     label: 'ไฟล์นิเทศหน้าเดียว',
+    zipName: 'นิเทศหน้าเดียว',
     collect: async (sup, year) => {
       const report = sup.onePageReport;
       if (!report || report.type === 'link') return [];
       const fileData = await getOnePageReportFile(sup);
       return fileData
-        ? [{ dataUrl: fileData, name: `นิเทศหน้าเดียว_${teacherFileName(sup)}_${year}` }]
+        ? [{ dataUrl: fileData, name: `นิเทศหน้าเดียว_${year}`, folder: teacherFolderName(sup) }]
         : [];
     },
     // Reports attached as a Google Drive link have no file to save.
@@ -2663,8 +2679,8 @@ export default function AdminDashboard({
               onClick={handleDownloadYearCycle3Photos}
             >
               {yearDownload
-                ? `กำลังดาวน์โหลด ${yearDownload.done}/${yearDownload.total} ...`
-                : `⬇ โหลดภาพ PLC วงรอบที่ 3 ของครูทุกท่าน (ปี ${selectedAdminPlcYear})`}
+                ? yearDownloadLabel(yearDownload)
+                : `⬇ โหลดภาพ PLC วงรอบที่ 3 ของครูทุกท่าน (ZIP, ปี ${selectedAdminPlcYear})`}
             </button>
             <button
               type="button"
@@ -2674,8 +2690,8 @@ export default function AdminDashboard({
               onClick={handleDownloadYearOnePageReports}
             >
               {yearDownload
-                ? `กำลังดาวน์โหลด ${yearDownload.done}/${yearDownload.total} ...`
-                : `⬇ โหลดไฟล์นิเทศหน้าเดียวของครูทุกท่าน (ปี ${selectedAdminPlcYear})`}
+                ? yearDownloadLabel(yearDownload)
+                : `⬇ โหลดไฟล์นิเทศหน้าเดียวของครูทุกท่าน (ZIP, ปี ${selectedAdminPlcYear})`}
             </button>
           </div>
 
