@@ -42,7 +42,11 @@ export default function AvatarEditorModal({ currentImage, currentPosition, onSav
       // size is paid by everyone on every visit. 200px still renders sharp
       // at the 56px (navbar) and 44px (table) sizes these are shown at,
       // even on a 3x display.
-      const dataUrl = await resizeImage(file, { maxWidth: 200, maxHeight: 200, quality: 0.7 });
+      // maxBytes keeps one outlier from taking up as much room as four
+      // normal avatars: 33 staff x 10KB is the whole document's budget.
+      const dataUrl = await resizeImage(file, {
+        maxWidth: 200, maxHeight: 200, quality: 0.7, maxBytes: 10 * 1024
+      });
       setPendingImage(dataUrl);
       setPosition(DEFAULT_POSITION);
     } catch (err) {

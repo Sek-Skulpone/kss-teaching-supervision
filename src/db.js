@@ -1262,8 +1262,9 @@ export const updateSystemSettings = async (newSettings) => {
 // without needing a rules change deployed first.
 const PLC_DOC_PREFIX = 'plclog_';
 const plcDocId = (logId) => `${PLC_DOC_PREFIX}${logId}`;
-const LEGACY_PLC_DOC = ['system_db', 'plc_logs'];
-const PLC_MIGRATION_DOC = ['system_db', 'plc_logs_migration'];
+// The pre-split `system_db/plc_logs` array document was drained into these
+// per-log documents long ago, and was deleted in Sept 2026 once every log in
+// it had been confirmed present here; the code that read it is gone with it.
 
 const readLocalPlcLogs = () => safeJsonParse(localStorage.getItem('ks_plc_logs'), []);
 
@@ -1275,34 +1276,6 @@ const cachePlcLogsLocally = (logs) => {
     // mirror is a nice-to-have, so degrade rather than break the save.
     console.warn('Could not cache PLC logs locally (quota?):', e);
   }
-};
-
-// One-time move of any logs still living in the legacy single-document array
-// into the per-document collection. Non-destructive: the legacy document is
-// left untouched as a backup, and a marker document prevents re-running (so
-// legitimately deleted logs don't get resurrected on the next load).
-const migrateLegacyPlcLogs = async () => {
-  const markerRef = doc(db, ...PLC_MIGRATION_DOC);
-  const markerSnap = await getDoc(markerRef);
-  if (markerSnap.exists() && markerSnap.data().done) return;
-
-  const legacySnap = await getDoc(doc(db, ...LEGACY_PLC_DOC));
-  const legacyLogs = legacySnap.exists() ? (legacySnap.data().list || []) : [];
-
-  if (legacyLogs.length > 0) {
-    // Firestore batches cap at 500 writes; PLC logs will never approach that,
-    // but chunk anyway so this stays correct as data grows.
-    for (let i = 0; i < legacyLogs.length; i += 400) {
-      const batch = writeBatch(db);
-      legacyLogs.slice(i, i + 400).forEach(log => {
-        batch.set(doc(db, 'system_db', plcDocId(log.id)), log);
-      });
-      await batch.commit();
-    }
-    console.log(`Migrated ${legacyLogs.length} PLC log(s) to per-document storage.`);
-  }
-
-  await setDoc(markerRef, { done: true, migratedAt: new Date().toISOString(), count: legacyLogs.length });
 };
 
 // PLC photos are stored OUTSIDE the log document, one document per log at
@@ -1377,7 +1350,6 @@ export const getPlcLogs = async () => {
   if (!isFirebaseInitialized) return readLocalPlcLogs();
 
   try {
-    await migrateLegacyPlcLogs();
     // Document-ID range query bounded by the shared prefix, so this reads only
     // the PLC log documents and not the large packed array documents that
     // share the system_db collection.  is the conventional high sentinel

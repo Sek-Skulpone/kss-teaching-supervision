@@ -8,7 +8,15 @@
 // ~104KB at the previous 800px @ 0.7, i.e. roughly half the storage and
 // transfer for images that are only ever viewed on a phone or in a modal.
 // Callers wanting a different trade-off (e.g. avatars) pass explicit values.
-export const resizeImage = (file, { maxWidth = 700, maxHeight = 700, quality = 0.5 } = {}) => {
+//
+// `maxBytes` puts a hard ceiling on the result: quality is stepped down until
+// the photo fits. Use it where many photos share one document -- an avatar
+// that came out ten times larger than its neighbours is the sort of thing
+// that quietly fills a document up.
+export const resizeImage = (
+  file,
+  { maxWidth = 700, maxHeight = 700, quality = 0.5, maxBytes = 0 } = {}
+) => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);
@@ -37,7 +45,19 @@ export const resizeImage = (file, { maxWidth = 700, maxHeight = 700, quality = 0
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0, width, height);
 
-        const dataUrl = canvas.toDataURL('image/jpeg', quality);
+        let dataUrl = canvas.toDataURL('image/jpeg', quality);
+
+        // A photo of a detailed page can still come out several times larger
+        // than a portrait at the same settings, so step the quality down
+        // until it fits rather than trusting one guess.
+        if (maxBytes > 0) {
+          let step = quality;
+          while (dataUrl.length > maxBytes && step > 0.25) {
+            step -= 0.1;
+            dataUrl = canvas.toDataURL('image/jpeg', step);
+          }
+        }
+
         resolve(dataUrl);
       };
       img.onerror = (err) => {
