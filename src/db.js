@@ -138,10 +138,10 @@ const ensureDBLoaded = async (force = false) => {
 
     dbCache = { ...dbCache, teachers, supervisions, termPlans, lastLoaded: now };
 
-    // Cache locally
-    localStorage.setItem('ks_teachers', JSON.stringify(teachers));
-    localStorage.setItem('ks_supervisions', JSON.stringify(supervisions));
-    localStorage.setItem('ks_term_plans', JSON.stringify(termPlans));
+    // Cache locally (best-effort -- see safeCacheLocal).
+    safeCacheLocal('ks_teachers', teachers);
+    safeCacheLocal('ks_supervisions', supervisions);
+    safeCacheLocal('ks_term_plans', termPlans);
 
     return dbCache;
   } catch (e) {
@@ -155,6 +155,18 @@ const ensureDBLoaded = async (force = false) => {
 };
 
 const byteSizeOf = (value) => new TextEncoder().encode(JSON.stringify(value)).length;
+
+// Best-effort local mirror. This cache is optional (Firestore is the source
+// of truth), so a full localStorage quota -- which happens in practice once
+// enough evaluation photos/PLC logs accumulate -- must never make a
+// successful Firestore write look like a failed save.
+const safeCacheLocal = (key, value) => {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (e) {
+    console.warn(`Could not cache "${key}" locally (quota?):`, e);
+  }
+};
 
 // Maps the Firestore document name to the dbCache property it's stored under.
 // (plc_logs is absent on purpose -- it uses per-document storage, not the
@@ -174,11 +186,18 @@ const mutateCollection = async (datatype, mutateFn) => {
   const cacheKey = CACHE_KEY_BY_DATATYPE[datatype];
 
   if (!isFirebaseInitialized) {
-    const dbData = await ensureDBLoaded();
-    const nextList = mutateFn(dbData[cacheKey] || []);
-    dbData[cacheKey] = nextList;
-    localStorage.setItem(`ks_${datatype}`, JSON.stringify(nextList));
-    return { success: true, list: nextList };
+    // Offline mode has no Firestore backup -- localStorage IS the datastore
+    // here, so a write failure genuinely means the save failed.
+    try {
+      const dbData = await ensureDBLoaded();
+      const nextList = mutateFn(dbData[cacheKey] || []);
+      dbData[cacheKey] = nextList;
+      localStorage.setItem(`ks_${datatype}`, JSON.stringify(nextList));
+      return { success: true, list: nextList };
+    } catch (e) {
+      console.error(`Failed to save ${datatype} locally:`, e);
+      return { success: false, list: null, error: e };
+    }
   }
 
   try {
@@ -203,7 +222,9 @@ const mutateCollection = async (datatype, mutateFn) => {
 
     dbCache[cacheKey] = nextList;
     dbCache.lastLoaded = Date.now();
-    localStorage.setItem(`ks_${datatype}`, JSON.stringify(nextList));
+    // Best-effort mirror -- the Firestore write above already succeeded, so
+    // a full localStorage quota here must not be reported as a failed save.
+    safeCacheLocal(`ks_${datatype}`, nextList);
     return { success: true, list: nextList };
   } catch (e) {
     console.error(`Failed to save ${datatype} to Firestore:`, e);
@@ -680,8 +701,8 @@ export const getSystemSettings = async () => {
 };
 
 export const updateSystemSettings = async (newSettings) => {
-  localStorage.setItem('ks_settings', JSON.stringify(newSettings));
-  
+  safeCacheLocal('ks_settings', newSettings);
+
   if (!isFirebaseInitialized) {
     return true;
   }
