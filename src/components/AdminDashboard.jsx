@@ -7,6 +7,7 @@ import { formatThaiDate } from '../utils/thaiDate';
 import { getStatusLabel } from '../utils/statusLabels';
 import { todayDateString, toLocalDateString } from '../utils/localDate';
 import { getEvaluationImages, getPlcLogImages } from '../db';
+import { downloadImages } from '../utils/downloadImages';
 import { openOnePageReport } from '../utils/attachments';
 
 const PERIODS_LIST = [
@@ -73,6 +74,7 @@ export default function AdminDashboard({
   // PLC photos live outside the log documents (see db.js), so only the ones
   // on screen are fetched instead of every photo in the school.
   const [plcImagesByLog, setPlcImagesByLog] = useState({});
+  const [isDownloadingPhotos, setIsDownloadingPhotos] = useState(false);
   const [activePlcLightboxImage, setActivePlcLightboxImage] = useState(null);
 
   // States for scheduling date/time
@@ -208,6 +210,22 @@ export default function AdminDashboard({
 
   // Falls back to photos still stored inline on logs that predate the split.
   const plcImagesFor = (log) => (log ? (plcImagesByLog[log.id] || log.images || []) : []);
+
+  // Saves every cycle-3 photo (the ones taken during the observation) to the
+  // device as separate files.
+  const handleDownloadCycle3Photos = async (images, teacherName, academicYear) => {
+    if (isDownloadingPhotos || images.length === 0) return;
+    setIsDownloadingPhotos(true);
+    try {
+      const saved = await downloadImages(images, `PLC_วงรอบที่3_${teacherName}_${academicYear}`);
+      if (saved === 0) alert('ไม่พบภาพที่ดาวน์โหลดได้');
+    } catch (e) {
+      console.error('Could not download photos:', e);
+      alert('ไม่สามารถดาวน์โหลดภาพได้ กรุณาลองใหม่อีกครั้ง');
+    } finally {
+      setIsDownloadingPhotos(false);
+    }
+  };
 
   // Committee picker: tick as many teachers as needed, then appoint them all
   // with one button press (and one write) instead of one per person.
@@ -3007,6 +3025,17 @@ export default function AdminDashboard({
                             {imagesToShow.length > 0 && (
                               <div>
                                 <strong>📷 {cycle.cycleNum === 3 ? 'ภาพกิจกรรมจากการประเมินนิเทศ (โดยผู้นิเทศ):' : 'ภาพกิจกรรม:'}</strong>
+                                {cycle.cycleNum === 3 && (
+                                  <button
+                                    type="button"
+                                    className="btn btn-outline no-print"
+                                    style={{ display: 'block', width: '100%', padding: '0.3rem', fontSize: '11px', marginTop: '0.35rem', borderColor: 'var(--primary-color)', color: 'var(--primary-color)', backgroundColor: 'white' }}
+                                    disabled={isDownloadingPhotos}
+                                    onClick={() => handleDownloadCycle3Photos(imagesToShow, selectedPlcTeacher.name, selectedAdminPlcYear)}
+                                  >
+                                    {isDownloadingPhotos ? 'กำลังดาวน์โหลด...' : `⬇ ดาวน์โหลดภาพทั้งหมด (${imagesToShow.length} ภาพ)`}
+                                  </button>
+                                )}
                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', gap: '6px', marginTop: '0.25rem' }}>
                                   {imagesToShow.map((img, idx) => (
                                     <div 
@@ -3133,6 +3162,17 @@ export default function AdminDashboard({
                     {detailImages.length > 0 && (
                       <div>
                         <span style={{ fontSize: '11px', color: 'var(--text-medium)', fontWeight: 600 }}>📷 {Number(selectedPlcLogDetail.cycle) === 3 ? 'ภาพหลักฐานจากการประเมินนิเทศ (โดยผู้นิเทศ):' : 'ภาพหลักฐาน:'}</span>
+                        {Number(selectedPlcLogDetail.cycle) === 3 && (
+                          <button
+                            type="button"
+                            className="btn btn-outline no-print"
+                            style={{ display: 'block', width: '100%', padding: '0.3rem', fontSize: '11px', marginTop: '0.35rem', borderColor: 'var(--primary-color)', color: 'var(--primary-color)', backgroundColor: 'white' }}
+                            disabled={isDownloadingPhotos}
+                            onClick={() => handleDownloadCycle3Photos(detailImages, selectedPlcLogDetail.teacherName, selectedPlcLogDetail.academicYear)}
+                          >
+                            {isDownloadingPhotos ? 'กำลังดาวน์โหลด...' : `⬇ ดาวน์โหลดภาพทั้งหมด (${detailImages.length} ภาพ)`}
+                          </button>
+                        )}
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', gap: '8px', marginTop: '0.25rem' }}>
                           {detailImages.map((img, idx) => (
                             <div 
