@@ -1311,11 +1311,11 @@ const migrateLegacyPlcLogs = async () => {
 // The logs themselves are already one document each, so this is not about a
 // ceiling -- it is about what every visit costs. getPlcLogs() reads the
 // whole collection to build the PLC screens, and the photos are ~99% of it:
-// measured on live data, 15 logs came to 3.5MB, and one log alone was
-// 415KB. With 33 teachers x 4 cycles a year that reaches ~25MB downloaded
-// per visit within a year, most of it never looked at. Keeping only
-// `imageCount` in the log leaves the list at about 1KB per log, and the
-// photos are fetched for the log actually being viewed.
+// measured on live data, 13 logs came to 1.8MB, one of them 415KB on its
+// own. With 33 teachers x 4 cycles a year that is ~18MB downloaded on every
+// visit within a year, nearly all of it never looked at. Keeping only
+// `imageCount` in the log took the same 13 logs down to 21.8KB in total,
+// and the photos are fetched for the log actually being viewed.
 const PLC_IMG_PREFIX = 'plcimg_';
 const plcImgDocId = (logId) => `${PLC_IMG_PREFIX}${logId}`;
 
