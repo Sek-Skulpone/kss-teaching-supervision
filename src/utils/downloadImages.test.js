@@ -18,8 +18,8 @@ beforeEach(() => {
   };
 });
 
-const jpeg = (tag) => `data:image/jpeg;base64,${Buffer.from(tag).toString('base64')}`;
-const png = (tag) => `data:image/png;base64,${Buffer.from(tag).toString('base64')}`;
+const jpeg = (tag) => `data:image/jpeg;base64,${btoa(tag)}`;
+const png = (tag) => `data:image/png;base64,${btoa(tag)}`;
 
 describe('downloadImages', () => {
   it('saves one numbered file per photo', async () => {
