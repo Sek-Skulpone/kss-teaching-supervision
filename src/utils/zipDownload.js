@@ -1,4 +1,4 @@
-import { safeFileName, parseDataUrl, isStoredFile, saveBlob } from './downloadImages';
+import { safeFileName, parseDataUrl, isStoredFile, saveBlob } from './fileDownload';
 
 // A whole academic year comes to ~130 photos, which is unusable as 130
 // separate downloads, so the year-wide exports build one ZIP with a folder

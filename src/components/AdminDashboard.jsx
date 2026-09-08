@@ -7,7 +7,7 @@ import { formatThaiDate } from '../utils/thaiDate';
 import { getStatusLabel } from '../utils/statusLabels';
 import { todayDateString, toLocalDateString } from '../utils/localDate';
 import { getEvaluationImages, getPlcLogImages, getOnePageReportFile } from '../db';
-import { downloadImages, imageFiles } from '../utils/downloadImages';
+import { imageFiles } from '../utils/fileDownload';
 import { downloadZip } from '../utils/zipDownload';
 import { openOnePageReport } from '../utils/attachments';
 
@@ -306,13 +306,17 @@ export default function AdminDashboard({
     }
   });
 
-  // Saves every cycle-3 photo (the ones taken during the observation) to the
-  // device as separate files.
+  // Saves one teacher's cycle-3 photos (the ones taken during the
+  // observation) as a ZIP, in a folder named after them.
   const handleDownloadCycle3Photos = async (images, teacherName, academicYear) => {
     if (isDownloadingPhotos || images.length === 0) return;
     setIsDownloadingPhotos(true);
     try {
-      const saved = await downloadImages(images, `PLC_วงรอบที่3_${teacherName}_${academicYear}`);
+      const saved = await downloadZip(
+        imageFiles(images, `PLC_วงรอบที่3_${academicYear}`)
+          .map(file => ({ ...file, folder: teacherName })),
+        `ภาพPLCวงรอบที่3_${teacherName}_${academicYear}`
+      );
       if (saved === 0) alert('ไม่พบภาพที่ดาวน์โหลดได้');
     } catch (e) {
       console.error('Could not download photos:', e);
@@ -3153,7 +3157,7 @@ export default function AdminDashboard({
                                     disabled={isDownloadingPhotos}
                                     onClick={() => handleDownloadCycle3Photos(imagesToShow, selectedPlcTeacher.name, selectedAdminPlcYear)}
                                   >
-                                    {isDownloadingPhotos ? 'กำลังดาวน์โหลด...' : `⬇ ดาวน์โหลดภาพทั้งหมด (${imagesToShow.length} ภาพ)`}
+                                    {isDownloadingPhotos ? 'กำลังรวมไฟล์ ZIP...' : `⬇ ดาวน์โหลดภาพทั้งหมด ZIP (${imagesToShow.length} ภาพ)`}
                                   </button>
                                 )}
                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', gap: '6px', marginTop: '0.25rem' }}>
@@ -3290,7 +3294,7 @@ export default function AdminDashboard({
                             disabled={isDownloadingPhotos}
                             onClick={() => handleDownloadCycle3Photos(detailImages, selectedPlcLogDetail.teacherName, selectedPlcLogDetail.academicYear)}
                           >
-                            {isDownloadingPhotos ? 'กำลังดาวน์โหลด...' : `⬇ ดาวน์โหลดภาพทั้งหมด (${detailImages.length} ภาพ)`}
+                            {isDownloadingPhotos ? 'กำลังรวมไฟล์ ZIP...' : `⬇ ดาวน์โหลดภาพทั้งหมด ZIP (${detailImages.length} ภาพ)`}
                           </button>
                         )}
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', gap: '8px', marginTop: '0.25rem' }}>

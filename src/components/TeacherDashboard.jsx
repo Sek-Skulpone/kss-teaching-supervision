@@ -21,7 +21,8 @@ import { resizeImage } from '../utils/imageResize';
 import { formatThaiDate } from '../utils/thaiDate';
 import { getStatusLabel } from '../utils/statusLabels';
 import { openOnePageReport, openPostLessonRecord } from '../utils/attachments';
-import { downloadImages } from '../utils/downloadImages';
+import { imageFiles } from '../utils/fileDownload';
+import { downloadZip } from '../utils/zipDownload';
 import { getOnePageReportFile, getPostLessonRecordFile, getPlcLogImages, getEvaluationImages } from '../db';
 
 export default function TeacherDashboard({
@@ -693,13 +694,17 @@ export default function TeacherDashboard({
     return () => { cancelled = true; };
   }, [myPlcLogIdsKey]);
 
-  // Saves every cycle-3 photo (the ones taken during the observation) to the
-  // teacher's device as separate files.
+  // Saves this teacher's own cycle-3 photos (the ones taken during the
+  // observation) as a ZIP, in a folder named after them.
   const handleDownloadCycle3Photos = async (images) => {
     if (isDownloadingPhotos || images.length === 0) return;
     setIsDownloadingPhotos(true);
     try {
-      const saved = await downloadImages(images, `PLC_วงรอบที่3_${currentUser.name}_${selectedPlcYear}`);
+      const saved = await downloadZip(
+        imageFiles(images, `PLC_วงรอบที่3_${selectedPlcYear}`)
+          .map(file => ({ ...file, folder: currentUser.name })),
+        `ภาพPLCวงรอบที่3_${currentUser.name}_${selectedPlcYear}`
+      );
       if (saved === 0) alert('ไม่พบภาพที่ดาวน์โหลดได้');
     } catch (e) {
       console.error('Could not download photos:', e);
@@ -1462,7 +1467,7 @@ export default function TeacherDashboard({
                                 disabled={isDownloadingPhotos}
                                 onClick={() => handleDownloadCycle3Photos(imagesToShow)}
                               >
-                                {isDownloadingPhotos ? 'กำลังดาวน์โหลด...' : `⬇ ดาวน์โหลดภาพทั้งหมด (${imagesToShow.length} ภาพ)`}
+                                {isDownloadingPhotos ? 'กำลังรวมไฟล์ ZIP...' : `⬇ ดาวน์โหลดภาพทั้งหมด ZIP (${imagesToShow.length} ภาพ)`}
                               </button>
                             )}
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px', marginTop: '0.25rem' }}>
