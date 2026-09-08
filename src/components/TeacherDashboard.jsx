@@ -20,8 +20,8 @@ import EvaluationSummaryModal from './EvaluationSummaryModal';
 import { resizeImage } from '../utils/imageResize';
 import { formatThaiDate } from '../utils/thaiDate';
 import { getStatusLabel } from '../utils/statusLabels';
-import { openOnePageReport } from '../utils/onePageReport';
-import { getOnePageReportFile } from '../db';
+import { openOnePageReport, openPostLessonRecord } from '../utils/attachments';
+import { getOnePageReportFile, getPostLessonRecordFile } from '../db';
 
 export default function TeacherDashboard({
   currentUser,
@@ -137,13 +137,29 @@ export default function TeacherDashboard({
   const [onePageError, setOnePageError] = useState('');
   const [isProcessingOnePage, setIsProcessingOnePage] = useState(false);
 
-  const handleOpenPostLessonModal = (plan) => {
+  const handleOpenPostLessonModal = async (plan) => {
     setSelectedTermPlan(plan);
     setPostLessonType(plan.postLessonRecord?.type || 'pdf');
-    setPostLessonFile(plan.postLessonRecord?.type === 'pdf' ? plan.postLessonRecord.fileData : '');
+    setPostLessonFile('');
     setPostLessonLink(plan.postLessonRecord?.type === 'link' ? plan.postLessonRecord.fileUrl : '');
     setPostLessonFileName(plan.postLessonRecord?.type === 'pdf' ? 'ไฟล์เดิมที่อัปโหลดไว้.pdf' : '');
     setPostLessonFileError('');
+
+    // The PDF is kept in its own Firestore document (see db.js), so it has
+    // to be fetched back before the form can offer it as the current file.
+    if (plan.postLessonRecord?.type !== 'pdf') return;
+
+    setIsProcessingPostLessonFile(true);
+    try {
+      const fileData = await getPostLessonRecordFile(plan);
+      setPostLessonFile(fileData || '');
+      if (!fileData) {
+        setPostLessonFileName('');
+        setPostLessonFileError('ไม่สามารถโหลดไฟล์เดิมได้ กรุณาเลือกไฟล์ใหม่อีกครั้ง');
+      }
+    } finally {
+      setIsProcessingPostLessonFile(false);
+    }
   };
 
   const handlePostLessonFileChange = async (e) => {
@@ -866,20 +882,7 @@ export default function TeacherDashboard({
                                 type="button"
                                 className="btn btn-outline"
                                 style={{ padding: '0.2rem 0.4rem', fontSize: '11px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '0.2rem', whiteSpace: 'nowrap' }}
-                                onClick={() => {
-                                  if (plan.postLessonRecord.type === 'pdf') {
-                                    const newWindow = window.open();
-                                    if (newWindow) {
-                                      newWindow.document.write(`<iframe src="${plan.postLessonRecord.fileData}" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`);
-                                    } else {
-                                      alert('เบราว์เซอร์บล็อกป็อปอัป กรุณาอนุญาตป็อปอัปสำหรับเว็บไซต์นี้');
-                                    }
-                                  } else if (plan.postLessonRecord.type === 'link') {
-                                    window.open(plan.postLessonRecord.fileUrl, '_blank');
-                                  } else {
-                                    alert(`บันทึกหลังสอน (ข้อความ):\n\n${plan.postLessonRecord.outcome}`);
-                                  }
-                                }}
+                                onClick={() => openPostLessonRecord(plan)}
                               >
                                 📄 เปิดดูหลังแผน
                               </button>

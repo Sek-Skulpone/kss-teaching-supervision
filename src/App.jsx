@@ -22,7 +22,7 @@ import EvaluationSummaryModal from './components/EvaluationSummaryModal';
 import { formatThaiDateFull } from './utils/thaiDate';
 import { getStatusLabel } from './utils/statusLabels';
 import { todayDateString } from './utils/localDate';
-import { openOnePageReport } from './utils/onePageReport';
+import { openOnePageReport } from './utils/attachments';
 import AvatarEditorModal from './components/AvatarEditorModal';
 import {
   getUsers,

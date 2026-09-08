@@ -16,6 +16,12 @@ import {
   runTransaction
 } from 'firebase/firestore';
 import { hashPassword } from './utils/auth';
+import {
+  supervisionShardId,
+  supervisionsToArchive,
+  regroupSupervisions,
+  mergeIntoShard
+} from './utils/supervisionShards';
 
 // NOTE: this config is not a secret — Firebase's own docs confirm the client
 // config is safe to expose (https://firebase.google.com/docs/projects/api-keys).
@@ -105,14 +111,16 @@ const ensureDBLoaded = async (force = false) => {
 
   try {
     // Parallel fetch from Firestore
-    const [teachersSnap, supervisionsSnap, termPlansSnap] = await Promise.all([
+    const [teachersSnap, shardedSupervisions, termPlansSnap] = await Promise.all([
       getDoc(doc(db, "system_db", "teachers")),
-      getDoc(doc(db, "system_db", "supervisions")),
+      // Supervisions are split across the working document and one document
+      // per archived academic year -- see readSupervisionShards().
+      readSupervisionShards(),
       getDoc(doc(db, "system_db", "term_plans"))
     ]);
 
     let teachers = SEED_USERS;
-    let supervisions = [];
+    const supervisions = shardedSupervisions;
     let termPlans = [];
 
     // Process Teachers
@@ -120,13 +128,6 @@ const ensureDBLoaded = async (force = false) => {
       teachers = teachersSnap.data().list || SEED_USERS;
     } else {
       await setDoc(doc(db, "system_db", "teachers"), { list: SEED_USERS });
-    }
-
-    // Process Supervisions
-    if (supervisionsSnap.exists()) {
-      supervisions = supervisionsSnap.data().list || [];
-    } else {
-      await setDoc(doc(db, "system_db", "supervisions"), { list: [] });
     }
 
     // Process Term Plans
@@ -177,6 +178,109 @@ const CACHE_KEY_BY_DATATYPE = {
   term_plans: 'termPlans'
 };
 
+// Refuses a document that would not fit, instead of letting Firestore fail
+// the write (or, worse, letting the data grow until nothing can be saved).
+const assertDocumentFits = (payload, whatIsTooBig) => {
+  const size = byteSizeOf(payload);
+  if (size > MAX_DOC_BYTES) {
+    throw new Error(
+      `${whatIsTooBig}มีขนาดใหญ่เกินไป (${(size / 1024).toFixed(0)}KB จากสูงสุด ${(MAX_DOC_BYTES / 1024).toFixed(0)}KB) ` +
+      `ไม่สามารถบันทึกได้ กรุณาลบรูปภาพหรือไฟล์แนบเก่าออกก่อนบันทึกรายการใหม่`
+    );
+  }
+};
+
+const SUPERVISIONS_DOC = 'supervisions';
+const supervisionsRef = () => doc(db, 'system_db', SUPERVISIONS_DOC);
+
+// Which academic years currently sit in their own archive document (read
+// from the working document, the one place that records it), and the
+// records the working document itself held on the last read -- the
+// archiver looks at those rather than at the merged list.
+let archivedSupervisionYears = [];
+let workingSupervisions = [];
+
+// Reads the working document plus every archive document and returns them as
+// the single list the rest of the app expects. Archived (older) years come
+// first, so the merged order still runs oldest to newest.
+const readSupervisionShards = async () => {
+  const workingSnap = await getDoc(supervisionsRef());
+  if (!workingSnap.exists()) {
+    await setDoc(supervisionsRef(), { list: [] });
+    archivedSupervisionYears = [];
+    workingSupervisions = [];
+    return [];
+  }
+
+  const data = workingSnap.data();
+  archivedSupervisionYears = Array.isArray(data.archivedYears) ? data.archivedYears : [];
+  workingSupervisions = data.list || [];
+  if (archivedSupervisionYears.length === 0) return workingSupervisions;
+
+  const archiveSnaps = await Promise.all(
+    archivedSupervisionYears.map(year => getDoc(doc(db, 'system_db', supervisionShardId(year))))
+  );
+  const archived = archiveSnaps.flatMap(snap => (snap.exists() ? (snap.data().list || []) : []));
+  return [...archived, ...workingSupervisions];
+};
+
+// The supervisions equivalent of the packed-document transaction below: it
+// reads the working document and every archive, hands `mutateFn` the merged
+// list exactly as before, then writes each record back to the document it
+// came from -- touching only the documents that actually changed.
+const mutateSupervisionShards = async (mutateFn) => {
+  return runTransaction(db, async (transaction) => {
+    const workingSnap = await transaction.get(supervisionsRef());
+    const workingData = workingSnap.exists() ? workingSnap.data() : {};
+    const workingList = workingData.list || [];
+    const archivedYears = Array.isArray(workingData.archivedYears) ? workingData.archivedYears : [];
+
+    // Every read has to happen before the first write in a transaction.
+    const shardOfId = new Map();
+    const archivedLists = {};
+    for (const year of archivedYears) {
+      const snap = await transaction.get(doc(db, 'system_db', supervisionShardId(year)));
+      const list = snap.exists() ? (snap.data().list || []) : [];
+      archivedLists[year] = list;
+      list.forEach(record => shardOfId.set(record.id, year));
+    }
+
+    const merged = [
+      ...archivedYears.flatMap(year => archivedLists[year]),
+      ...workingList
+    ];
+    const nextList = mutateFn(merged);
+    const { working, byYear } = regroupSupervisions(nextList, shardOfId);
+
+    // An archive whose records have all been deleted is removed, so it stops
+    // costing a read on every page load.
+    const remainingYears = [];
+    for (const year of archivedYears) {
+      const nextShard = byYear[year] || [];
+      const shardRef = doc(db, 'system_db', supervisionShardId(year));
+
+      if (nextShard.length === 0) {
+        transaction.delete(shardRef);
+        continue;
+      }
+      remainingYears.push(year);
+      if (JSON.stringify(nextShard) === JSON.stringify(archivedLists[year])) continue;
+      const payload = { academicYear: year, list: nextShard };
+      assertDocumentFits(payload, `ข้อมูลการนิเทศของปีการศึกษา ${year}`);
+      transaction.set(shardRef, payload);
+    }
+
+    const listChanged = JSON.stringify(working) !== JSON.stringify(workingList);
+    if (listChanged || remainingYears.length !== archivedYears.length) {
+      const payload = { ...workingData, list: working, archivedYears: remainingYears };
+      assertDocumentFits(payload, 'ข้อมูลการนิเทศของปีการศึกษาปัจจุบัน');
+      transaction.set(supervisionsRef(), payload);
+    }
+
+    return nextList;
+  });
+};
+
 // Atomically read-modify-write a collection using a Firestore transaction, so
 // two clients writing around the same time can't silently drop each other's
 // change (the old code read a cached array, mutated it, then blindly
@@ -202,23 +306,18 @@ const mutateCollection = async (datatype, mutateFn) => {
 
   try {
     const ref = doc(db, "system_db", datatype);
-    const nextList = await runTransaction(db, async (transaction) => {
-      const snap = await transaction.get(ref);
-      const currentList = snap.exists() ? (snap.data().list || []) : [];
-      const updatedList = mutateFn(currentList);
-      const payload = { list: updatedList };
+    const nextList = datatype === SUPERVISIONS_DOC
+      ? await mutateSupervisionShards(mutateFn)
+      : await runTransaction(db, async (transaction) => {
+        const snap = await transaction.get(ref);
+        const currentList = snap.exists() ? (snap.data().list || []) : [];
+        const updatedList = mutateFn(currentList);
+        const payload = { list: updatedList };
 
-      const size = byteSizeOf(payload);
-      if (size > MAX_DOC_BYTES) {
-        throw new Error(
-          `ข้อมูล "${datatype}" มีขนาดใหญ่เกินไป (${(size / 1024).toFixed(0)}KB จากสูงสุด ${(MAX_DOC_BYTES / 1024).toFixed(0)}KB) ` +
-          `ไม่สามารถบันทึกได้ กรุณาลบรูปภาพหรือไฟล์แนบเก่าออกก่อนบันทึกรายการใหม่`
-        );
-      }
-
-      transaction.set(ref, payload);
-      return updatedList;
-    });
+        assertDocumentFits(payload, `ข้อมูล "${datatype}"`);
+        transaction.set(ref, payload);
+        return updatedList;
+      });
 
     dbCache[cacheKey] = nextList;
     dbCache.lastLoaded = Date.now();
@@ -328,7 +427,7 @@ const migrateInlineOnePageReports = async (supervisions) => {
 
   try {
     for (const sup of needing) {
-      await writeOnePageReportFile(sup.id, sup.onePageReport.fileData);
+      await onePageStore.write(sup.id, sup.onePageReport.fileData);
     }
 
     // Strip the now-duplicated file payloads from the supervisions document.
@@ -346,6 +445,78 @@ const migrateInlineOnePageReports = async (supervisions) => {
   }
 };
 
+// Moves records from finished academic years out of the working document
+// and into one document per year, so the working document only ever holds
+// the year in progress (see utils/supervisionShards.js for why). Runs at
+// most once per page session; the move is a single transaction, so records
+// are never absent from both documents at once.
+let supervisionArchiveChecked = false;
+const archivePastSupervisionYears = async () => {
+  if (supervisionArchiveChecked || !isFirebaseInitialized) return false;
+  supervisionArchiveChecked = true;
+  if (workingSupervisions.length === 0) return false;
+
+  try {
+    const settingsSnap = await getDoc(doc(db, 'system_db', 'settings'));
+    const currentAcademicYear = settingsSnap.exists()
+      ? settingsSnap.data().currentAcademicYear
+      : null;
+    // Without a current academic year there is no way to tell which years
+    // are finished, so leave everything where it is.
+    if (!currentAcademicYear) return false;
+    if (Object.keys(supervisionsToArchive(workingSupervisions, currentAcademicYear)).length === 0) return false;
+
+    const moved = await runTransaction(db, async (transaction) => {
+      const workingSnap = await transaction.get(supervisionsRef());
+      if (!workingSnap.exists()) return 0;
+
+      const data = workingSnap.data();
+      const list = data.list || [];
+      const byYear = supervisionsToArchive(list, currentAcademicYear);
+      const years = Object.keys(byYear);
+      if (years.length === 0) return 0;
+
+      // Every read has to happen before the first write in a transaction.
+      const existing = {};
+      for (const year of years) {
+        const snap = await transaction.get(doc(db, 'system_db', supervisionShardId(year)));
+        existing[year] = snap.exists() ? (snap.data().list || []) : [];
+      }
+
+      const archivedYears = Array.isArray(data.archivedYears) ? [...data.archivedYears] : [];
+      const archivedIds = new Set();
+
+      years.forEach(year => {
+        const shardList = mergeIntoShard(existing[year], byYear[year]);
+        const payload = { academicYear: year, list: shardList };
+        assertDocumentFits(payload, `ข้อมูลการนิเทศของปีการศึกษา ${year}`);
+        transaction.set(doc(db, 'system_db', supervisionShardId(year)), payload);
+
+        if (!archivedYears.includes(year)) archivedYears.push(year);
+        byYear[year].forEach(record => archivedIds.add(record.id));
+      });
+
+      transaction.set(supervisionsRef(), {
+        ...data,
+        list: list.filter(record => !archivedIds.has(record.id)),
+        archivedYears: archivedYears.sort()
+      });
+      return archivedIds.size;
+    });
+
+    if (moved > 0) {
+      console.log(`Archived ${moved} supervision(s) from finished academic years.`);
+      return true;
+    }
+    return false;
+  } catch (e) {
+    // Non-fatal: everything still works from the working document, it just
+    // stays larger. Retried on the next page load.
+    console.warn('Could not archive past academic years:', e);
+    return false;
+  }
+};
+
 export const getSupervisions = async () => {
   const dbData = await ensureDBLoaded();
   const movedInline = await migrateInlineEvaluationImages(dbData.supervisions);
@@ -353,7 +524,8 @@ export const getSupervisions = async () => {
   // per-supervision documents get split out in the same pass.
   await migrateLegacyEvalImageDocs(dbData.supervisions);
   const movedOnePage = await migrateInlineOnePageReports(dbData.supervisions);
-  if (movedInline || movedOnePage) {
+  const archived = await archivePastSupervisionYears();
+  if (movedInline || movedOnePage || archived) {
     const refreshed = await ensureDBLoaded(true);
     return refreshed.supervisions;
   }
@@ -388,23 +560,15 @@ export const updateSupervision = async (supervisionId, updatedFields) => {
   // Offline mode keeps it inline -- localStorage is the datastore there and
   // has no companion document to read the file back out of.
   if (isFirebaseInitialized && 'onePageReport' in updatedFields) {
-    const report = updatedFields.onePageReport;
-    // A report that is being removed outright, or replaced by a link, has no
-    // file any more -- anything else without a `fileData` is a metadata-only
-    // update, and must leave the stored file where it is rather than wipe it.
-    const clearsFile = !report || report.type === 'link';
-    if (clearsFile || report.fileData) {
-      try {
-        await writeOnePageReportFile(supervisionId, clearsFile ? null : report.fileData);
-      } catch (e) {
-        console.error('Failed to save the One-Page report file:', e);
-        return false;
-      }
+    try {
+      fields = {
+        ...updatedFields,
+        onePageReport: await onePageStore.detach(supervisionId, updatedFields.onePageReport)
+      };
+    } catch (e) {
+      console.error('Failed to save the One-Page report file:', e);
+      return false;
     }
-    fields = {
-      ...updatedFields,
-      onePageReport: report ? { ...report, fileData: null } : null
-    };
   }
 
   const { success } = await mutateCollection('supervisions', (list) =>
@@ -426,7 +590,7 @@ export const deleteSupervision = async (supervisionId) => {
       console.warn('Supervision deleted but its evaluation images could not be removed:', e);
     }
     try {
-      await writeOnePageReportFile(supervisionId, null);
+      await onePageStore.write(supervisionId, null);
     } catch (e) {
       console.warn('Supervision deleted but its One-Page report file could not be removed:', e);
     }
@@ -813,71 +977,139 @@ export const submitPostTeachingRecord = async (supervisionId, record) => {
   return success;
 };
 
-// The One-Page report's file (a base64 image, or a PDF of up to 300KB) is
-// stored OUTSIDE the supervisions document, one document per supervision at
-// `system_db/onepage_<supervisionId>` shaped as { supervisionId, fileData }.
-// Only { type, fileUrl, uploadedAt } stays inline, which is all the lists
-// and badges need to say whether a report exists.
+// ATTACHED FILES (One-Page reports, post-lesson records)
+//
+// Both of these attach one big file -- a base64 image, or a PDF of up to
+// 300-500KB -- to a record that lives inside a packed array document.
+// Keeping the file inline is exactly what has broken saving in this project
+// before, so each file gets a document of its own, `<prefix><recordId>`,
+// and only the metadata (type, link, uploadedAt) stays inline. That is all
+// the lists and badges need in order to show that a file exists.
 //
 // Measured on live data: the supervisions document stood at 256KB of the
 // 900KB cap for 27 records, and 123KB of that -- nearly half -- was a
 // SINGLE teacher's One-Page image. Every teacher is expected to upload one
-// per year (33 teachers), so about seven more uploads would have taken the
-// document past the cap and blocked every save in the system, the same way
-// the evaluation photos did before they were split out.
-// Load cost matters too: this document is fetched on every page view to
-// draw the calendar, so files kept inline were downloaded by everyone just
-// to see the month grid. Files are now read on demand by
-// getOnePageReportFile() when someone actually opens a report.
-const ONE_PAGE_PREFIX = 'onepage_';
-const onePageDocId = (supervisionId) => `${ONE_PAGE_PREFIX}${supervisionId}`;
+// per year (33 teachers), so about seven more uploads would have taken it
+// past the cap and blocked every save in the system. The term plans
+// document is smaller but more fragile still: it accepts PDFs of up to
+// 500KB, so the second teacher to attach one would have finished it off.
+//
+// Load cost matters too: both packed documents are fetched on every page
+// view, so files kept inline were downloaded by everyone just to draw the
+// calendar or the plan list. Files are now read on demand, only when
+// someone actually opens one.
+const attachmentStore = (prefix, whatIsTooBig) => {
+  const refFor = (ownerId) => doc(db, 'system_db', `${prefix}${ownerId}`);
 
-// Writes (or, with a falsy `fileData`, removes) one supervision's One-Page
-// file document.
-const writeOnePageReportFile = async (supervisionId, fileData) => {
-  const ref = doc(db, 'system_db', onePageDocId(supervisionId));
+  // Writes (or, with a falsy `fileData`, removes) one record's file document.
+  const write = async (ownerId, fileData) => {
+    const ref = refFor(ownerId);
 
-  if (!fileData) {
-    await deleteDoc(ref);
-    return;
-  }
+    if (!fileData) {
+      await deleteDoc(ref);
+      return;
+    }
 
-  const payload = { supervisionId, fileData };
-  const size = byteSizeOf(payload);
-  if (size > MAX_DOC_BYTES) {
-    throw new Error(
-      `ไฟล์รายงานนิเทศหน้าเดียวมีขนาดใหญ่เกินไป ` +
-      `(${(size / 1024).toFixed(0)}KB จากสูงสุด ${(MAX_DOC_BYTES / 1024).toFixed(0)}KB) ` +
-      `กรุณาลดขนาดไฟล์แล้วบันทึกใหม่อีกครั้ง`
-    );
-  }
-  await setDoc(ref, payload);
+    const payload = { ownerId, fileData };
+    const size = byteSizeOf(payload);
+    if (size > MAX_DOC_BYTES) {
+      throw new Error(
+        `${whatIsTooBig}มีขนาดใหญ่เกินไป ` +
+        `(${(size / 1024).toFixed(0)}KB จากสูงสุด ${(MAX_DOC_BYTES / 1024).toFixed(0)}KB) ` +
+        `กรุณาลดขนาดไฟล์แล้วบันทึกใหม่อีกครั้ง`
+      );
+    }
+    await setDoc(ref, payload);
+  };
+
+  const read = async (ownerId) => {
+    const snap = await getDoc(refFor(ownerId));
+    return snap.exists() ? (snap.data().fileData || null) : null;
+  };
+
+  // Moves `record.fileData` into its own document and returns the record
+  // with only the metadata left inline. A record being removed outright, or
+  // replaced by a link, has no file any more -- anything else arriving
+  // without a `fileData` is a metadata-only update, and must leave the
+  // stored file where it is rather than wipe it.
+  const detach = async (ownerId, record) => {
+    const clearsFile = !record || record.type === 'link';
+    if (clearsFile || record.fileData) {
+      await write(ownerId, clearsFile ? null : record.fileData);
+    }
+    return record ? { ...record, fileData: null } : null;
+  };
+
+  // Reads a record's file back: from the document, or from the record
+  // itself for rows written before the split and for offline mode, where
+  // localStorage is the datastore and has no companion document.
+  const load = async (ownerId, record) => {
+    if (!record || record.type === 'link') return null;
+    if (record.fileData) return record.fileData;
+    if (!isFirebaseInitialized) return null;
+    try {
+      return await read(ownerId);
+    } catch (e) {
+      console.warn(`Failed to load ${prefix}${ownerId}:`, e);
+      return null;
+    }
+  };
+
+  return { write, load, detach };
 };
+
+const onePageStore = attachmentStore('onepage_', 'ไฟล์รายงานนิเทศหน้าเดียว');
+const postLessonStore = attachmentStore('postlesson_', 'ไฟล์บันทึกหลังแผนการจัดการเรียนรู้');
 
 /** Returns the One-Page report's base64 file for one supervision, or null. */
-export const getOnePageReportFile = async (supervision) => {
-  const report = supervision && supervision.onePageReport;
-  if (!report || report.type === 'link') return null;
-  // Records written before the split -- and everything saved in offline
-  // mode -- still carry the file inline.
-  if (report.fileData) return report.fileData;
-  if (!isFirebaseInitialized) return null;
+export const getOnePageReportFile = async (supervision) =>
+  onePageStore.load(supervision && supervision.id, supervision && supervision.onePageReport);
 
-  try {
-    const snap = await getDoc(doc(db, 'system_db', onePageDocId(supervision.id)));
-    return snap.exists() ? (snap.data().fileData || null) : null;
-  } catch (e) {
-    console.warn('Failed to load the One-Page report file:', e);
-    return null;
-  }
-};
+/** Returns the post-lesson record's base64 file for one term plan, or null. */
+export const getPostLessonRecordFile = async (plan) =>
+  postLessonStore.load(plan && plan.id, plan && plan.postLessonRecord);
 
 /* ==========================================================================
    3. TERM LESSON PLANS ARCHIVE
    ========================================================================== */
 
+// Moves post-lesson files that older plans stored inline out into their own
+// documents (see attachmentStore above). Runs at most once per page session,
+// and only writes if inline files are still present.
+let inlinePostLessonChecked = false;
+const migrateInlinePostLessonFiles = async (plans) => {
+  if (inlinePostLessonChecked || !isFirebaseInitialized) return false;
+  inlinePostLessonChecked = true;
+
+  const needing = plans.filter(p => p.postLessonRecord && p.postLessonRecord.fileData);
+  if (needing.length === 0) return false;
+
+  try {
+    for (const plan of needing) {
+      await postLessonStore.write(plan.id, plan.postLessonRecord.fileData);
+    }
+
+    // Strip the now-duplicated file payloads from the term plans document.
+    await mutateCollection('term_plans', (list) =>
+      list.map(p => (needing.some(n => n.id === p.id) && p.postLessonRecord
+        ? { ...p, postLessonRecord: { ...p.postLessonRecord, fileData: null } }
+        : p))
+    );
+    console.log(`Moved ${needing.length} inline post-lesson file(s) out of the term plans document.`);
+    return true;
+  } catch (e) {
+    // Non-fatal: the app still works with the files inline, it just stays large.
+    console.warn('Could not move inline post-lesson files:', e);
+    return false;
+  }
+};
+
 export const getTermPlans = async () => {
   const dbData = await ensureDBLoaded();
+  if (await migrateInlinePostLessonFiles(dbData.termPlans)) {
+    const refreshed = await ensureDBLoaded(true);
+    return refreshed.termPlans;
+  }
   return dbData.termPlans;
 };
 
@@ -893,14 +1125,42 @@ export const addTermPlan = async (planData) => {
 };
 
 export const updateTermPlan = async (planId, updatedFields) => {
+  let fields = updatedFields;
+
+  // The post-lesson record's file (a PDF of up to 500KB) goes into its own
+  // document; only the metadata stays in the shared term plans document.
+  // Offline mode keeps it inline -- localStorage is the datastore there and
+  // has no companion document to read the file back out of.
+  if (isFirebaseInitialized && 'postLessonRecord' in updatedFields) {
+    try {
+      fields = {
+        ...updatedFields,
+        postLessonRecord: await postLessonStore.detach(planId, updatedFields.postLessonRecord)
+      };
+    } catch (e) {
+      console.error('Failed to save the post-lesson file:', e);
+      return false;
+    }
+  }
+
   const { success } = await mutateCollection('term_plans', (list) =>
-    list.map(p => (p.id === planId ? { ...p, ...updatedFields } : p))
+    list.map(p => (p.id === planId ? { ...p, ...fields } : p))
   );
   return success;
 };
 
 export const deleteTermPlan = async (planId) => {
   const { success } = await mutateCollection('term_plans', (list) => list.filter(p => p.id !== planId));
+
+  // Remove the companion file document, so deleted plans don't leave their
+  // post-lesson PDF behind.
+  if (success && isFirebaseInitialized) {
+    try {
+      await postLessonStore.write(planId, null);
+    } catch (e) {
+      console.warn('Term plan deleted but its post-lesson file could not be removed:', e);
+    }
+  }
   return success;
 };
 

@@ -7,7 +7,7 @@ import { formatThaiDate } from '../utils/thaiDate';
 import { getStatusLabel } from '../utils/statusLabels';
 import { todayDateString, toLocalDateString } from '../utils/localDate';
 import { getEvaluationImages } from '../db';
-import { openOnePageReport } from '../utils/onePageReport';
+import { openOnePageReport } from '../utils/attachments';
 
 const PERIODS_LIST = [
   'คาบที่ 1 (08.30 - 09.20 น.)',

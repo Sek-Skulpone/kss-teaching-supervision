@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { openPostLessonRecord } from '../utils/attachments';
 import { Search, FolderOpen, Eye, FileText, ClipboardList } from 'lucide-react';
 
 export default function TermPlanArchive({ termPlans, settings = {} }) {
@@ -127,18 +128,7 @@ export default function TermPlanArchive({ termPlans, settings = {} }) {
                         <button
                           className="btn btn-primary"
                           style={{ padding: '0.25rem 0.6rem', fontSize: '12px', display: 'inline-flex', gap: '0.25rem', alignItems: 'center' }}
-                          onClick={() => {
-                            if (plan.postLessonRecord.type === 'pdf') {
-                              const newWindow = window.open();
-                              if (newWindow) {
-                                newWindow.document.write(`<iframe src="${plan.postLessonRecord.fileData}" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`);
-                              } else {
-                                alert('เบราว์เซอร์บล็อกป็อปอัป กรุณาอนุญาตป็อปอัปสำหรับเว็บไซต์นี้');
-                              }
-                            } else if (plan.postLessonRecord.type === 'link') {
-                              window.open(plan.postLessonRecord.fileUrl, '_blank');
-                            }
-                          }}
+                          onClick={() => openPostLessonRecord(plan)}
                         >
                           <Eye size={12} /> เปิดดูหลังแผน ({plan.postLessonRecord.type === 'pdf' ? 'PDF' : 'ลิงก์'})
                         </button>

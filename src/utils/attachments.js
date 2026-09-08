@@ -1,4 +1,4 @@
-import { getOnePageReportFile } from '../db';
+import { getOnePageReportFile, getPostLessonRecordFile } from '../db';
 
 // Turns a base64 data URL into a blob: URL. Chrome refuses to open a data:
 // URL as a top-level document, so PDFs have to be handed over as a blob.
@@ -50,5 +50,40 @@ export const openOnePageReport = async (supervision, showImage) => {
     if (pendingTab) pendingTab.close();
     console.error('Failed to open the One-Page report:', e);
     alert('ไม่สามารถเปิดไฟล์รายงานนิเทศหน้าเดียวได้ กรุณาลองใหม่อีกครั้ง');
+  }
+};
+
+// Opens a term plan's post-lesson record. Its PDF lives in its own Firestore
+// document (see db.js), so it is fetched on demand the same way.
+export const openPostLessonRecord = async (plan) => {
+  const record = plan && plan.postLessonRecord;
+  if (!record) return;
+
+  if (record.type === 'link') {
+    window.open(record.fileUrl, '_blank');
+    return;
+  }
+  if (record.type !== 'pdf') {
+    alert(`บันทึกหลังสอน (ข้อความ):
+
+${record.outcome || ''}`);
+    return;
+  }
+
+  // Opened on the click itself so the popup blocker lets it through.
+  const pendingTab = window.open('', '_blank');
+  if (!pendingTab) {
+    alert('เบราว์เซอร์บล็อกป็อปอัป กรุณาอนุญาตป็อปอัปสำหรับเว็บไซต์นี้');
+    return;
+  }
+
+  try {
+    const fileData = await getPostLessonRecordFile(plan);
+    if (!fileData) throw new Error('post-lesson file not found');
+    pendingTab.location.href = dataUrlToBlobUrl(fileData);
+  } catch (e) {
+    pendingTab.close();
+    console.error('Failed to open the post-lesson record:', e);
+    alert('ไม่สามารถเปิดไฟล์บันทึกหลังแผนการจัดการเรียนรู้ได้ กรุณาลองใหม่อีกครั้ง');
   }
 };
