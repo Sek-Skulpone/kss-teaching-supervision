@@ -317,7 +317,11 @@ const migrateInlineEvaluationImages = async (supervisions) => {
 
 export const getSupervisions = async () => {
   const dbData = await ensureDBLoaded();
-  if (await migrateInlineEvaluationImages(dbData.supervisions)) {
+  const movedInline = await migrateInlineEvaluationImages(dbData.supervisions);
+  // Runs after the inline migration so photos it just wrote into the older
+  // per-supervision documents get split out in the same pass.
+  await migrateLegacyEvalImageDocs(dbData.supervisions);
+  if (movedInline) {
     const refreshed = await ensureDBLoaded(true);
     return refreshed.supervisions;
   }
@@ -353,11 +357,12 @@ export const updateSupervision = async (supervisionId, updatedFields) => {
 export const deleteSupervision = async (supervisionId) => {
   const { success } = await mutateCollection('supervisions', (list) => list.filter(s => s.id !== supervisionId));
 
-  // Remove the companion photo document so deleted supervisions don't leave
-  // their evaluation images behind (see EVAL_IMG_PREFIX below).
+  // Remove the companion photo documents -- one per supervisor plus any
+  // pre-split document -- so deleted supervisions don't leave their
+  // evaluation images behind (see EVAL_IMG_PREFIX below).
   if (success && isFirebaseInitialized) {
     try {
-      await deleteDoc(doc(db, 'system_db', `evalimg_${supervisionId}`));
+      await deleteEvaluationImageDocs(supervisionId);
     } catch (e) {
       console.warn('Supervision deleted but its evaluation images could not be removed:', e);
     }
@@ -494,8 +499,35 @@ export const removeSupervisor = async (supervisionId, supervisorId) => {
 //     evaluation photo in the school just to see the month grid.
 // Keeping only the text and ratings inline leaves the supervisions document
 // small and lets photos be fetched on demand by the report screens.
+// Photos are stored ONE DOCUMENT PER SUPERVISOR, at
+// `system_db/evalimg_<supervisionId>_<supervisorId>` shaped as
+// { images: [dataUrl, ...] }.
+//
+// They used to share a single per-supervision document keyed by supervisor.
+// That put the whole committee under one 900KB ceiling, so a member whose
+// own photos were small could still be refused because colleagues had
+// already filled it -- measured on live data at 734KB (81% of the cap) for a
+// three-member committee, with one member alone occupying 664KB. Splitting
+// per supervisor means the ceiling applies to one person's 4 photos
+// (~200KB) instead of the committee's combined ~800KB, which removes the
+// ceiling rather than postponing it. Same reasoning as the PLC logs in
+// section 5.
 const EVAL_IMG_PREFIX = 'evalimg_';
-const evalImgDocId = (supervisionId) => `${EVAL_IMG_PREFIX}${supervisionId}`;
+// Documents written before the split: one per supervision, holding
+// { images: { [supervisorId]: [...] } }. Still read so existing photos keep
+// showing, and drained by migrateLegacyEvalImageDocs().
+const legacyEvalImgDocId = (supervisionId) => `${EVAL_IMG_PREFIX}${supervisionId}`;
+const evalImgDocId = (supervisionId, supervisorId) =>
+  `${EVAL_IMG_PREFIX}${supervisionId}_${supervisorId}`;
+
+// Bounds a document-id range query to one supervision's per-supervisor
+// photo documents.  is the conventional high sentinel for Firestore
+// prefix queries -- it sorts after any realistic supervisor id.
+const evalImgRange = (supervisionId) => [
+  `${EVAL_IMG_PREFIX}${supervisionId}_`,
+  `${EVAL_IMG_PREFIX}${supervisionId}_`
+];
+
 
 /** Returns { [supervisorId]: [dataUrl, ...] } for one supervision. */
 export const getEvaluationImages = async (supervisionId) => {
@@ -503,8 +535,26 @@ export const getEvaluationImages = async (supervisionId) => {
     return safeJsonParse(localStorage.getItem(`ks_evalimg_${supervisionId}`), {});
   }
   try {
-    const snap = await getDoc(doc(db, 'system_db', evalImgDocId(supervisionId)));
-    const images = snap.exists() ? (snap.data().images || {}) : {};
+    const [lo, hi] = evalImgRange(supervisionId);
+    // The legacy document sorts before `lo` (it has no trailing "_"), so it
+    // needs its own read rather than falling out of the range query.
+    const [perSupervisorSnap, legacySnap] = await Promise.all([
+      getDocs(query(
+        collection(db, 'system_db'),
+        where(documentId(), '>=', lo),
+        where(documentId(), '<=', hi)
+      )),
+      getDoc(doc(db, 'system_db', legacyEvalImgDocId(supervisionId)))
+    ]);
+
+    const images = legacySnap.exists() ? { ...(legacySnap.data().images || {}) } : {};
+    // Per-supervisor documents are authoritative where both exist.
+    perSupervisorSnap.docs.forEach(d => {
+      const supervisorId = d.id.slice(`${EVAL_IMG_PREFIX}${supervisionId}_`.length);
+      const list = d.data().images;
+      if (Array.isArray(list) && list.length > 0) images[supervisorId] = list;
+    });
+
     try {
       localStorage.setItem(`ks_evalimg_${supervisionId}`, JSON.stringify(images));
     } catch { /* quota - the local mirror is optional */ }
@@ -515,32 +565,126 @@ export const getEvaluationImages = async (supervisionId) => {
   }
 };
 
-// Writes one supervisor's photos into the supervision's photo document,
-// leaving other supervisors' photos untouched.
+// Writes ONE supervisor's photos, leaving every other supervisor's photos
+// untouched (they live in their own documents).
 const writeEvaluationImages = async (supervisionId, supervisorId, images) => {
-  const ref = doc(db, 'system_db', evalImgDocId(supervisionId));
-  await runTransaction(db, async (transaction) => {
-    const snap = await transaction.get(ref);
-    const current = snap.exists() ? (snap.data().images || {}) : {};
-    const next = { ...current };
-    if (images && images.length > 0) {
-      next[supervisorId] = images;
-    } else {
-      delete next[supervisorId];
-    }
+  const ref = doc(db, 'system_db', evalImgDocId(supervisionId, supervisorId));
 
-    const payload = { images: next };
+  if (images && images.length > 0) {
+    const payload = { supervisionId, supervisorId, images };
     const size = byteSizeOf(payload);
     if (size > MAX_DOC_BYTES) {
       throw new Error(
-        `รูปภาพประกอบการนิเทศของรายการนี้มีขนาดรวมใหญ่เกินไป ` +
+        `รูปภาพประกอบการนิเทศของท่านมีขนาดรวมใหญ่เกินไป ` +
         `(${(size / 1024).toFixed(0)}KB จากสูงสุด ${(MAX_DOC_BYTES / 1024).toFixed(0)}KB) ` +
         `กรุณาลดจำนวนรูปภาพลงแล้วบันทึกใหม่อีกครั้ง`
       );
     }
-    transaction.set(ref, payload);
-  });
+    await setDoc(ref, payload);
+  } else {
+    await deleteDoc(ref);
+  }
+
+  // Drop this supervisor's entry from the pre-split document too, so a stale
+  // copy there can't resurrect deleted photos or mask an update.
+  await removeFromLegacyEvalImgDoc(supervisionId, supervisorId);
   localStorage.removeItem(`ks_evalimg_${supervisionId}`);
+};
+
+// Removes every photo document belonging to one supervision: each
+// supervisor's own document plus any pre-split one.
+const deleteEvaluationImageDocs = async (supervisionId) => {
+  const [lo, hi] = evalImgRange(supervisionId);
+  const snap = await getDocs(query(
+    collection(db, 'system_db'),
+    where(documentId(), '>=', lo),
+    where(documentId(), '<=', hi)
+  ));
+
+  const batch = writeBatch(db);
+  snap.docs.forEach(d => batch.delete(d.ref));
+  batch.delete(doc(db, 'system_db', legacyEvalImgDocId(supervisionId)));
+  await batch.commit();
+};
+
+// One-time drain of the pre-split per-supervision photo documents into one
+// document per supervisor. A marker document keeps this to a single run
+// across all clients (rather than once per session per browser), since the
+// scan costs one read per supervision that has been evaluated.
+let legacyEvalImagesChecked = false;
+const EVAL_IMG_MIGRATION_DOC = ['system_db', 'evalimg_migration'];
+const migrateLegacyEvalImageDocs = async (supervisions) => {
+  if (legacyEvalImagesChecked || !isFirebaseInitialized) return;
+  legacyEvalImagesChecked = true;
+
+  try {
+    const markerRef = doc(db, ...EVAL_IMG_MIGRATION_DOC);
+    const markerSnap = await getDoc(markerRef);
+    if (markerSnap.exists() && markerSnap.data().done) return;
+
+    // Only supervisions that actually hold evaluations can have photos.
+    const evaluated = supervisions.filter(s =>
+      s.evaluations && Object.keys(s.evaluations).length > 0
+    );
+
+    for (const sup of evaluated) {
+      const legacyRef = doc(db, 'system_db', legacyEvalImgDocId(sup.id));
+      const legacySnap = await getDoc(legacyRef);
+      if (!legacySnap.exists()) continue;
+
+      const bySupervisor = legacySnap.data().images || {};
+      const entries = Object.entries(bySupervisor)
+        .filter(([, list]) => Array.isArray(list) && list.length > 0);
+      if (entries.length === 0) {
+        await deleteDoc(legacyRef);
+        continue;
+      }
+
+      // Written one at a time rather than batched: a committee's photos can
+      // total ~800KB, which would blow past the 10 MiB per-batch limit once
+      // several supervisions are migrated together.
+      for (const [supervisorId, list] of entries) {
+        await setDoc(doc(db, 'system_db', evalImgDocId(sup.id, supervisorId)), {
+          supervisionId: sup.id,
+          supervisorId,
+          images: list
+        });
+      }
+      await deleteDoc(legacyRef);
+      console.log(`Split ${entries.length} supervisor photo set(s) out of ${sup.id}.`);
+    }
+
+    await setDoc(markerRef, { done: true, migratedAt: new Date().toISOString(), scanned: evaluated.length });
+  } catch (e) {
+    // Non-fatal: getEvaluationImages still reads the legacy documents, and
+    // the marker is only written on a clean pass so this retries next load.
+    console.warn('Could not split legacy evaluation photo documents:', e);
+  }
+};
+
+// Removes one supervisor's photos from the pre-split per-supervision
+// document, deleting the document once it holds nothing else.
+const removeFromLegacyEvalImgDoc = async (supervisionId, supervisorId) => {
+  const legacyRef = doc(db, 'system_db', legacyEvalImgDocId(supervisionId));
+  try {
+    await runTransaction(db, async (transaction) => {
+      const snap = await transaction.get(legacyRef);
+      if (!snap.exists()) return;
+      const current = snap.data().images || {};
+      if (!(supervisorId in current)) return;
+
+      const next = { ...current };
+      delete next[supervisorId];
+      if (Object.keys(next).length === 0) {
+        transaction.delete(legacyRef);
+      } else {
+        transaction.set(legacyRef, { images: next });
+      }
+    });
+  } catch (e) {
+    // Non-fatal: the per-supervisor document above is authoritative.
+    console.warn('Could not clean up the legacy photo document:', e);
+  }
 };
 
 export const submitEvaluation = async (supervisionId, supervisorId, evaluation) => {
