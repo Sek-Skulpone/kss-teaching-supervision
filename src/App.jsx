@@ -1029,6 +1029,7 @@ export default function App() {
                 onSubmitPostRecord={handleSubmitPostRecord}
                 onDeleteSupervision={handleDeleteSupervision}
                 onUpdateSupervision={handleUpdateSupervision}
+                onSubmitEvaluation={handleSubmitEvaluation}
                 termPlans={termPlans}
                 onRegisterTermPlan={handleRegisterTermPlan}
                 onUpdateTermPlan={handleUpdateTermPlan}

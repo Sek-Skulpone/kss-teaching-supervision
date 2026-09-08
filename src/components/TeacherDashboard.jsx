@@ -29,6 +29,7 @@ export default function TeacherDashboard({
   onSubmitPostRecord,
   onDeleteSupervision,
   onUpdateSupervision,
+  onSubmitEvaluation,
   termPlans = [],
   onRegisterTermPlan,
   onUpdateTermPlan,
@@ -1695,10 +1696,14 @@ export default function TeacherDashboard({
           supervision={selectedEvalSupervision}
           currentUser={currentUser}
           onClose={() => setSelectedEvalSupervision(null)}
-          onSubmit={async (newEvaluations) => {
-            const success = await onUpdateSupervision(selectedEvalSupervision.id, {
-              evaluations: newEvaluations
-            });
+          onSubmit={async (myEvaluation) => {
+            // Submits THIS supervisor's evaluation only; db.js merges it into
+            // the evaluations map transactionally and stores photos in the
+            // separate per-supervision photo document. Writing the raw object
+            // as `evaluations` instead would erase the other committee
+            // members' entries and inline the photos into the shared
+            // supervisions document.
+            const success = await onSubmitEvaluation(selectedEvalSupervision.id, myEvaluation);
             if (success) {
               alert('บันทึกผลการประเมินนิเทศเรียบร้อยแล้ว!');
               setSelectedEvalSupervision(null);

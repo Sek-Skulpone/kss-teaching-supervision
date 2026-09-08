@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Camera, Upload, X } from 'lucide-react';
 import { OBSERVATION_ITEMS } from '../utils/observationItems';
 import { resizeImage } from '../utils/imageResize';
 import { formatThaiDate } from '../utils/thaiDate';
+import { getEvaluationImages } from '../db';
 
 // Builds the default (all-items "มี"/score 4) ratings map used both as the
 // initial state and as a fallback for any item missing from saved data.
@@ -48,8 +49,27 @@ export default function EvaluationModal({ supervision, currentUser, onClose, onS
   const [teacherBehavior, setTeacherBehavior] = useState(() => existingEval?.teacherBehavior ?? '');
   const [teachingActivity, setTeachingActivity] = useState(() => existingEval?.teachingActivity ?? '');
   const [studentBehavior, setStudentBehavior] = useState(() => existingEval?.studentBehavior ?? '');
+  // Photos of an already-submitted evaluation live OUTSIDE the supervision
+  // record (see db.js EVAL_IMG_PREFIX), so they have to be fetched before
+  // this form can be re-submitted: saving an edit sends the whole photo list,
+  // and submitting an empty one erases the photos already stored. Older
+  // records that still carry them inline are used as-is.
   const [images, setImages] = useState(() => existingEval?.images ?? []);
   const [isResizing, setIsResizing] = useState(false);
+  const [isLoadingImages, setIsLoadingImages] = useState(
+    () => (existingEval?.imageCount ?? 0) > 0 && !(existingEval?.images?.length > 0)
+  );
+
+  useEffect(() => {
+    if (!isLoadingImages) return;
+    let cancelled = false;
+    getEvaluationImages(supervision.id)
+      .then(map => { if (!cancelled) setImages(map?.[currentUser.id] ?? []); })
+      .catch(err => console.error('Could not load existing evaluation images:', err))
+      .finally(() => { if (!cancelled) setIsLoadingImages(false); });
+    return () => { cancelled = true; };
+    // Runs once for the supervision/supervisor this modal was opened for.
+  }, [supervision.id, currentUser.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleImageChange = async (e) => {
     const files = Array.from(e.target.files);
@@ -81,6 +101,10 @@ export default function EvaluationModal({ supervision, currentUser, onClose, onS
 
   const handleFormSubmit = (e) => {
     e.preventDefault();
+
+    // Submitting before the stored photos arrive would send an empty list
+    // and delete them.
+    if (isLoadingImages) return;
 
     const formattedRatings = {};
     OBSERVATION_ITEMS.forEach(item => {
@@ -352,7 +376,7 @@ export default function EvaluationModal({ supervision, currentUser, onClose, onS
                     accept="image/*"
                     onChange={handleImageChange}
                     style={{ display: 'none' }}
-                    disabled={isResizing}
+                    disabled={isResizing || isLoadingImages}
                   />
                   <label
                     htmlFor="supervision-image-upload"
@@ -416,7 +440,9 @@ export default function EvaluationModal({ supervision, currentUser, onClose, onS
           </div>
           <div className="modal-footer">
             <button type="button" className="btn btn-outline" onClick={onClose}>ยกเลิก</button>
-            <button type="submit" className="btn btn-primary">บันทึกผลการประเมิน</button>
+            <button type="submit" className="btn btn-primary" disabled={isLoadingImages || isResizing}>
+              {isLoadingImages ? 'กำลังโหลดรูปภาพที่บันทึกไว้...' : 'บันทึกผลการประเมิน'}
+            </button>
           </div>
         </form>
       </div>
