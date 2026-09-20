@@ -3017,8 +3017,7 @@ export default function AdminDashboard({
                           <div style={{ backgroundColor: '#f8fafc', padding: '0.5rem', borderRadius: '6px', border: '1px solid #e2e8f0', marginTop: '0.25rem', display: 'flex', gap: '0.4rem' }}>
                             <button
                               type="button"
-                              className="btn btn-outline"
-                              style={{ width: '100%', padding: '0.3rem', fontSize: '11px', borderColor: 'var(--primary-color)', color: 'var(--primary-color)', backgroundColor: 'white' }}
+                              className="btn btn-outline btn-attachment"
                               onClick={() => openOnePageReport(sup, setActivePlcLightboxImage)}
                             >
                               📄 เปิดดูเอกสาร One Page ({sup.onePageReport.type === 'link' ? 'ลิงก์' : 'ไฟล์แนบ'})
@@ -3152,8 +3151,8 @@ export default function AdminDashboard({
                                 {cycle.cycleNum === 3 && (
                                   <button
                                     type="button"
-                                    className="btn btn-outline no-print"
-                                    style={{ display: 'block', width: '100%', padding: '0.3rem', fontSize: '11px', marginTop: '0.35rem', borderColor: 'var(--primary-color)', color: 'var(--primary-color)', backgroundColor: 'white' }}
+                                    className="btn btn-outline no-print btn-attachment"
+                                    style={{ display: 'block', marginTop: '0.35rem' }}
                                     disabled={isDownloadingPhotos}
                                     onClick={() => handleDownloadCycle3Photos(imagesToShow, selectedPlcTeacher.name, selectedAdminPlcYear)}
                                   >
@@ -3308,8 +3307,8 @@ export default function AdminDashboard({
                         {Number(selectedPlcLogDetail.cycle) === 3 && (
                           <button
                             type="button"
-                            className="btn btn-outline no-print"
-                            style={{ display: 'block', width: '100%', padding: '0.3rem', fontSize: '11px', marginTop: '0.35rem', borderColor: 'var(--primary-color)', color: 'var(--primary-color)', backgroundColor: 'white' }}
+                            className="btn btn-outline no-print btn-attachment"
+                            style={{ display: 'block', marginTop: '0.35rem' }}
                             disabled={isDownloadingPhotos}
                             onClick={() => handleDownloadCycle3Photos(detailImages, selectedPlcLogDetail.teacherName, selectedPlcLogDetail.academicYear)}
                           >
