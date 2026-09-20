@@ -3293,8 +3293,8 @@ export default function AdminDashboard({
                         <span style={{ fontSize: '11px', color: 'var(--text-medium)', fontWeight: 600, display: 'block' }}>📄 เอกสารสรุปผลการนิเทศหน้าเดียว (One Page):</span>
                         <button
                           type="button"
-                          className="btn btn-outline"
-                          style={{ width: '100%', padding: '0.3rem', fontSize: '11px', marginTop: '0.35rem', borderColor: 'var(--primary-color)', color: 'var(--primary-color)', backgroundColor: 'white' }}
+                          className="btn btn-outline btn-attachment"
+                          style={{ marginTop: '0.35rem' }}
                           onClick={() => openOnePageReport(sup, setActivePlcLightboxImage)}
                         >
                           เปิดดูเอกสารนิเทศหน้าเดียว ({sup.onePageReport.type === 'link' ? 'ลิงก์' : 'ไฟล์แนบ'})
