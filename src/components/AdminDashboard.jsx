@@ -3283,6 +3283,25 @@ export default function AdminDashboard({
                       </div>
                     )}
 
+                    {/* The One-Page report belongs to the year's supervision
+                        rather than to any single PLC cycle, so it is offered
+                        from every cycle's detail -- an admin reviewing a PLC
+                        record shouldn't have to leave for another table to
+                        see the supervision summary that goes with it. */}
+                    {sup?.onePageReport && (
+                      <div style={{ backgroundColor: '#fafafa', padding: '0.5rem', borderRadius: '4px', border: '1px solid #eee' }}>
+                        <span style={{ fontSize: '11px', color: 'var(--text-medium)', fontWeight: 600, display: 'block' }}>📄 เอกสารสรุปผลการนิเทศหน้าเดียว (One Page):</span>
+                        <button
+                          type="button"
+                          className="btn btn-outline"
+                          style={{ width: '100%', padding: '0.3rem', fontSize: '11px', marginTop: '0.35rem', borderColor: 'var(--primary-color)', color: 'var(--primary-color)', backgroundColor: 'white' }}
+                          onClick={() => openOnePageReport(sup, setActivePlcLightboxImage)}
+                        >
+                          เปิดดูเอกสารนิเทศหน้าเดียว ({sup.onePageReport.type === 'link' ? 'ลิงก์' : 'ไฟล์แนบ'})
+                        </button>
+                      </div>
+                    )}
+
                     {detailImages.length > 0 && (
                       <div>
                         <span style={{ fontSize: '11px', color: 'var(--text-medium)', fontWeight: 600 }}>📷 {Number(selectedPlcLogDetail.cycle) === 3 ? 'ภาพหลักฐานจากการประเมินนิเทศ (โดยผู้นิเทศ):' : 'ภาพหลักฐาน:'}</span>
