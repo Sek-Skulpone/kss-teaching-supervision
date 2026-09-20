@@ -1316,8 +1316,16 @@ tr:hover td {
   background-color: white;
 }
 
+/* Teacher-facing card actions (open report, edit file, view results). Same
+   cramped tap target, but each carries its own colours inline, so this class
+   handles sizing only and leaves their appearance alone. */
+.btn-tap {
+  font-size: 11px;
+}
+
 @media (max-width: 768px) {
-  .btn-attachment {
+  .btn-attachment,
+  .btn-tap {
     min-height: 40px;
     font-size: 13px;
   }

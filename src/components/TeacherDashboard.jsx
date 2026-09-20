@@ -1447,8 +1447,8 @@ export default function TeacherDashboard({
                               href={log.revisedPlanUrl}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="btn btn-outline"
-                              style={{ width: '100%', marginTop: '0.25rem', padding: '0.3rem', fontSize: '11px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem', backgroundColor: 'white' }}
+                              className="btn btn-outline btn-tap"
+                              style={{ width: '100%', marginTop: '0.25rem', padding: '0.3rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem', backgroundColor: 'white' }}
                             >
                               <FolderOpen size={12} />
                               เปิดดูแผนที่ปรับปรุงแล้ว
@@ -1462,8 +1462,8 @@ export default function TeacherDashboard({
                             {cycle.cycleNum === 3 && (
                               <button
                                 type="button"
-                                className="btn btn-outline"
-                                style={{ width: '100%', padding: '0.35rem', fontSize: '11px', marginTop: '0.35rem', borderColor: 'var(--primary-color)', color: 'var(--primary-color)', backgroundColor: 'white' }}
+                                className="btn btn-outline btn-tap"
+                                style={{ width: '100%', padding: '0.35rem', marginTop: '0.35rem', borderColor: 'var(--primary-color)', color: 'var(--primary-color)', backgroundColor: 'white' }}
                                 disabled={isDownloadingPhotos}
                                 onClick={() => handleDownloadCycle3Photos(imagesToShow)}
                               >
@@ -1524,8 +1524,8 @@ export default function TeacherDashboard({
 
                             <button
                               type="button"
-                              className="btn btn-outline"
-                              style={{ width: '100%', marginTop: '0.4rem', padding: '0.35rem', fontSize: '11px', borderColor: 'var(--primary-color)', color: 'var(--primary-color)', backgroundColor: 'white' }}
+                              className="btn btn-outline btn-tap"
+                              style={{ width: '100%', marginTop: '0.4rem', padding: '0.35rem', borderColor: 'var(--primary-color)', color: 'var(--primary-color)', backgroundColor: 'white' }}
                               onClick={() => setSelectedReportSummary(cycle3Supervision)}
                             >
                               📊 ดูผลการประเมินการนิเทศ {cycle3Supervision.evaluations && Object.keys(cycle3Supervision.evaluations).length > 0 ? `(${Object.keys(cycle3Supervision.evaluations).length} ท่าน)` : '(ยังไม่ได้รับการนิเทศ)'}
@@ -1565,16 +1565,16 @@ export default function TeacherDashboard({
                                 <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.2rem' }}>
                                   <button
                                     type="button"
-                                    className="btn btn-outline"
-                                    style={{ flex: 1, padding: '0.35rem', fontSize: '11px', borderColor: 'var(--primary-color)', color: 'var(--primary-color)', backgroundColor: 'white' }}
+                                    className="btn btn-outline btn-tap"
+                                    style={{ flex: 1, padding: '0.35rem', borderColor: 'var(--primary-color)', color: 'var(--primary-color)', backgroundColor: 'white' }}
                                     onClick={() => openOnePageReport(cycle3Supervision, setActivePlcLightbox)}
                                   >
                                     เปิดดูรายงาน
                                   </button>
                                   <button
                                     type="button"
-                                    className="btn btn-outline"
-                                    style={{ flex: 1, padding: '0.35rem', fontSize: '11px', backgroundColor: 'white' }}
+                                    className="btn btn-outline btn-tap"
+                                    style={{ flex: 1, padding: '0.35rem', backgroundColor: 'white' }}
                                     onClick={() => handleOpenOnePageEditor(cycle3Supervision)}
                                   >
                                     แก้ไขไฟล์
@@ -1586,8 +1586,8 @@ export default function TeacherDashboard({
                                 <div style={{ color: 'var(--text-medium)', fontSize: '12px', fontStyle: 'italic', textAlign: 'center' }}>ยังไม่มีการอัปโหลดนิเทศหน้าเดียว</div>
                                 <button
                                   type="button"
-                                  className="btn btn-primary"
-                                  style={{ width: '100%', padding: '0.4rem', fontSize: '11px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}
+                                  className="btn btn-primary btn-tap"
+                                  style={{ width: '100%', padding: '0.4rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}
                                   onClick={() => {
                                     setSelectedOnePageSupervision(cycle3Supervision);
                                     setOnePageType('image');
@@ -1615,16 +1615,16 @@ export default function TeacherDashboard({
                           <div style={{ display: 'flex', gap: '0.4rem', width: '100%' }}>
                             <button
                               type="button"
-                              className="btn btn-outline"
-                              style={{ flex: 1, padding: '0.5rem', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem', borderColor: 'var(--primary-color)', color: 'var(--primary-color)', backgroundColor: 'white' }}
+                              className="btn btn-outline btn-tap"
+                              style={{ flex: 1, padding: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem', borderColor: 'var(--primary-color)', color: 'var(--primary-color)', backgroundColor: 'white' }}
                               onClick={() => setSelectedReportSummary(cycle3Supervision)}
                             >
                               📊 ดูผลประเมิน
                             </button>
                             <button
                               type="button"
-                              className="btn btn-outline"
-                              style={{ flex: 1, padding: '0.5rem', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}
+                              className="btn btn-outline btn-tap"
+                              style={{ flex: 1, padding: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}
                               onClick={() => {
                                 setEditingSupervision(cycle3Supervision);
                                 setEditSubject(cycle3Supervision.subject);
